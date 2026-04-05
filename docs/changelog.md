@@ -30,3 +30,4 @@
 - **解決** | `conflicts/CONFLICT-002.md` | 選擇方案 2：充分討論，需所有成員確認才能定案
 - **解決** | `conflicts/CONFLICT-003.md` | 選擇方案 2：使用便利性優先，最簡記帳模式
 - **更新** | `specs/travel-planner-app/spec.md` | 回答開放問題：機票來源為官網、用戶以電話號碼註冊
+- **更新** | `specs/travel-planner-app/spec.md` | 回答剩餘開放問題：暫不商業化、不串接支付、不支援離線、搜尋用篩選器
