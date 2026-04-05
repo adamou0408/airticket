@@ -25,6 +25,9 @@
       "edgeToEdgeEnabled": true,
       "package": "com.airticket.app"
     },
+    "experiments": {
+      "baseUrl": "/airticket"
+    },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
