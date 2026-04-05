@@ -26,3 +26,7 @@
 - **衝突** | `conflicts/CONFLICT-001.md` | 偵測到衝突：外站票價格 vs 舒適度
 - **衝突** | `conflicts/CONFLICT-002.md` | 偵測到衝突：快速定案 vs 充分討論
 - **衝突** | `conflicts/CONFLICT-003.md` | 偵測到衝突：精確記帳 vs 使用便利性
+- **解決** | `conflicts/CONFLICT-001.md` | 選擇方案 1：外站票價格優先排序
+- **解決** | `conflicts/CONFLICT-002.md` | 選擇方案 2：充分討論，需所有成員確認才能定案
+- **解決** | `conflicts/CONFLICT-003.md` | 選擇方案 2：使用便利性優先，最簡記帳模式
+- **更新** | `specs/travel-planner-app/spec.md` | 回答開放問題：機票來源為官網、用戶以電話號碼註冊
