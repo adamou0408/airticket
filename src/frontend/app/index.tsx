@@ -20,6 +20,7 @@ import { Button } from '../src/components/Button';
 import { Input } from '../src/components/Input';
 import { TicketResultCard } from '../src/components/TicketResultCard';
 import { useSearchHistory } from '../src/hooks/useSearchHistory';
+import { mockSearchTickets } from '../src/api/mock';
 import type { TicketSearchResponse, OutstationTicket } from '../src/api/tickets';
 
 // Popular airports for quick selection
@@ -62,22 +63,29 @@ export default function TicketSearchScreen() {
 
     setLoading(true);
     try {
-      // Call backend API
-      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
-      const res = await fetch(`${API_URL}/tickets/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          origin, destination,
-          departure_date: departureDate,
-          return_date: returnDate,
-          passengers: parseInt(passengers) || 1,
-          sort_by: sortBy,
-        }),
-      });
+      let data: TicketSearchResponse;
+      const pax = parseInt(passengers) || 1;
 
-      if (!res.ok) throw new Error('搜尋失敗');
-      const data: TicketSearchResponse = await res.json();
+      try {
+        // Try real backend first
+        const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
+        const res = await fetch(`${API_URL}/tickets/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin, destination,
+            departure_date: departureDate,
+            return_date: returnDate,
+            passengers: pax,
+            sort_by: sortBy,
+          }),
+        });
+        if (!res.ok) throw new Error('API error');
+        data = await res.json();
+      } catch {
+        // Fallback to demo mode
+        data = mockSearchTickets(origin, destination, departureDate, returnDate, pax, sortBy);
+      }
 
       setResults(data.results);
       setDirectPrice(data.direct_price);
@@ -90,7 +98,7 @@ export default function TicketSearchScreen() {
         origin, destination,
         departure_date: departureDate,
         return_date: returnDate,
-        passengers: parseInt(passengers) || 1,
+        passengers: pax,
         best_price: bestPrice,
         direct_price: data.direct_price,
         result_count: data.result_count,
