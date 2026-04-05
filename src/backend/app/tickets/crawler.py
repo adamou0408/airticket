@@ -2,52 +2,41 @@
 
 Spec: specs/travel-planner-app/spec.md — US-1
 Task: 1.4 — Airline official website crawler
-
-This module provides a pluggable crawler interface. Each airline gets its own
-crawler implementation. For MVP, we provide a simulated crawler that returns
-realistic pricing data, plus the base class for real implementations.
+Iterate: 2026-04-05 — Added full datetime and flight duration
 """
 
 import random
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, timedelta
 
 from app.tickets.models import FlightLeg
 
 
-class AirlineCrawler(ABC):
-    """Base class for airline-specific crawlers."""
+# Flight duration estimates (minutes) by route distance
+DURATION = {
+    "short": (90, 180),    # 1.5-3h
+    "medium": (210, 360),  # 3.5-6h
+    "long": (480, 840),    # 8-14h
+}
 
+
+class AirlineCrawler(ABC):
     @abstractmethod
     async def fetch_price(
-        self,
-        origin: str,
-        destination: str,
-        travel_date: date,
-        passengers: int = 1,
+        self, origin: str, destination: str, travel_date: date, passengers: int = 1,
     ) -> FlightLeg | None:
-        """Fetch price for a single flight leg.
-
-        Returns None if no flight found on the route/date.
-        """
         ...
 
 
 class SimulatedCrawler(AirlineCrawler):
-    """Simulated crawler for development and testing.
+    """Simulated crawler with realistic time data."""
 
-    Generates realistic-looking pricing based on route distance heuristics.
-    Will be replaced by real airline crawlers in production.
-    """
-
-    # Base prices by rough route distance category (TWD per person)
     _BASE_PRICES = {
-        "short": (2000, 6000),     # < 3h flights (e.g. TPE-HKG, TPE-NRT)
-        "medium": (8000, 18000),   # 3-7h flights (e.g. TPE-BKK, TPE-SIN)
-        "long": (15000, 35000),    # > 7h flights (e.g. TPE-LAX, TPE-LHR)
+        "short": (2000, 6000),
+        "medium": (8000, 18000),
+        "long": (15000, 35000),
     }
 
-    # Known short-haul routes
     _SHORT_ROUTES = {
         frozenset({"TPE", "HKG"}), frozenset({"TPE", "MFM"}),
         frozenset({"TPE", "NRT"}), frozenset({"TPE", "KIX"}),
@@ -56,6 +45,7 @@ class SimulatedCrawler(AirlineCrawler):
         frozenset({"HKG", "BKK"}), frozenset({"HKG", "SIN"}),
         frozenset({"ICN", "NRT"}), frozenset({"ICN", "KIX"}),
         frozenset({"MNL", "HKG"}), frozenset({"MNL", "TPE"}),
+        frozenset({"MFM", "TPE"}), frozenset({"KUL", "SIN"}),
     }
 
     _MEDIUM_ROUTES = {
@@ -77,41 +67,50 @@ class SimulatedCrawler(AirlineCrawler):
         return "long"
 
     async def fetch_price(
-        self,
-        origin: str,
-        destination: str,
-        travel_date: date,
-        passengers: int = 1,
+        self, origin: str, destination: str, travel_date: date, passengers: int = 1,
     ) -> FlightLeg | None:
         category = self._get_distance_category(origin, destination)
         low, high = self._BASE_PRICES[category]
 
-        # Add some date-based variation (weekends cost more)
-        multiplier = 1.0
-        if travel_date.weekday() >= 5:  # Saturday or Sunday
-            multiplier = 1.2
-
+        multiplier = 1.2 if travel_date.weekday() >= 5 else 1.0
         price = round(random.uniform(low, high) * multiplier)
+
         airline = random.choice(self._AIRLINES)
         flight_num = f"{airline.split()[1]}{random.randint(100, 999)}"
+
+        # Generate realistic departure time and flight duration
+        dep_hour = random.randint(6, 22)
+        dep_min = random.choice([0, 15, 30, 45])
+        dur_low, dur_high = DURATION[category]
+        duration = random.randint(dur_low, dur_high)
+
+        # Calculate arrival
+        arr_total_min = dep_hour * 60 + dep_min + duration
+        arr_hour = (arr_total_min // 60) % 24
+        arr_min = arr_total_min % 60
+        next_day = arr_total_min >= 24 * 60
+
+        arr_date = travel_date + timedelta(days=1) if next_day else travel_date
 
         return FlightLeg(
             origin=origin,
             destination=destination,
             airline=airline,
             flight_number=flight_num,
-            departure_time=f"{random.randint(6, 22):02d}:{random.choice(['00', '15', '30', '45'])}",
-            arrival_time=f"{random.randint(8, 23):02d}:{random.choice(['00', '15', '30', '45'])}",
+            departure_time=f"{dep_hour:02d}:{dep_min:02d}",
+            arrival_time=f"{arr_hour:02d}:{arr_min:02d}",
+            departure_date=travel_date.isoformat(),
+            arrival_date=arr_date.isoformat(),
+            flight_duration_minutes=duration,
             price=price,
+            next_day=next_day,
         )
 
 
-# Registry of available crawlers
 _crawler_instance: AirlineCrawler | None = None
 
 
 def get_crawler() -> AirlineCrawler:
-    """Get the active crawler instance."""
     global _crawler_instance
     if _crawler_instance is None:
         _crawler_instance = SimulatedCrawler()
@@ -119,6 +118,5 @@ def get_crawler() -> AirlineCrawler:
 
 
 def set_crawler(crawler: AirlineCrawler) -> None:
-    """Replace the crawler (for testing or switching to real crawlers)."""
     global _crawler_instance
     _crawler_instance = crawler

@@ -39,14 +39,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .ticket-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .outstation-badge { display: inline-flex; align-items: center; gap: 4px; background: #FFE8DD; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; color: #D4562A; }
 .savings-badge { background: #10B981; color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-.legs { margin-bottom: 12px; }
-.leg { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
-.leg-dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; }
-.leg-dot.out { background: #FF6B35; }
-.leg-dot.main { background: #004E89; }
-.leg-route { flex: 1; }
-.leg-airline { color: #9CA3AF; font-size: 11px; }
-.leg-price { font-weight: 600; font-size: 13px; }
+.timeline { margin-bottom: 12px; }
+.tl-section-label { font-size: 11px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.5px; margin: 8px 0 4px; }
+.tl-leg { display: flex; align-items: stretch; gap: 10px; padding: 2px 0; }
+.tl-line { width: 20px; display: flex; flex-direction: column; align-items: center; }
+.tl-dot { width: 10px; height: 10px; border-radius: 5px; flex-shrink: 0; z-index: 1; }
+.tl-dot.out { background: #FF6B35; }
+.tl-dot.main { background: #004E89; }
+.tl-stem { width: 2px; flex: 1; background: #E5E7EB; }
+.tl-body { flex: 1; padding-bottom: 6px; }
+.tl-times { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700; color: #1A1A2E; }
+.tl-arrow { color: #9CA3AF; font-size: 12px; }
+.tl-dur { font-size: 11px; font-weight: 500; color: #FF6B35; background: #FFE8DD; padding: 1px 6px; border-radius: 4px; }
+.tl-next-day { font-size: 10px; font-weight: 700; color: #EF4444; background: #FEE2E2; padding: 1px 5px; border-radius: 4px; }
+.tl-route { font-size: 13px; color: #6B7280; margin-top: 2px; }
+.tl-meta { font-size: 11px; color: #9CA3AF; }
+.tl-price { font-weight: 600; color: #1A1A2E; font-size: 13px; float: right; }
+.tl-layover { display: flex; align-items: center; gap: 10px; padding: 0; }
+.tl-layover-line { width: 20px; display: flex; flex-direction: column; align-items: center; }
+.tl-layover-dash { width: 2px; height: 24px; background: repeating-linear-gradient(to bottom, #F59E0B 0px, #F59E0B 3px, transparent 3px, transparent 6px); }
+.tl-layover-body { font-size: 12px; color: #F59E0B; font-weight: 600; padding: 4px 0; }
+.tl-summary { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+.tl-summary-item { font-size: 11px; color: #6B7280; background: #F3F4F6; padding: 3px 8px; border-radius: 6px; }
 .ticket-bottom { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #f0f0f0; padding-top: 10px; }
 .total-label { font-size: 11px; color: #9CA3AF; }
 .total-price { font-size: 22px; font-weight: 700; color: #FF6B35; }
@@ -250,16 +264,85 @@ export default function App() {
                         <span className="outstation-badge">✈️ 外站：{t.outstation_city_name} ({t.outstation_city})</span>
                         {t.savings_percent && t.savings_percent > 0 && <span className="savings-badge">省 {t.savings_percent}%</span>}
                       </div>
-                      <div className="legs">
-                        {t.legs.map((leg, j) => (
-                          <div className="leg" key={j}>
-                            <div className={`leg-dot ${j === 0 || j === 3 ? 'out' : 'main'}`} />
-                            <span className="leg-route">{leg.origin} → {leg.destination}</span>
-                            <span className="leg-airline">{leg.airline}</span>
-                            <span className="leg-price">${leg.price.toLocaleString()}</span>
+
+                      {/* Timeline */}
+                      <div className="timeline">
+                        <div className="tl-section-label">✈ 去程 — {t.outbound_hours}h</div>
+                        {/* Leg 1 */}
+                        <div className="tl-leg">
+                          <div className="tl-line"><div className="tl-dot out" /><div className="tl-stem" /></div>
+                          <div className="tl-body">
+                            <div className="tl-times">
+                              {t.legs[0].departure_time} <span className="tl-arrow">→</span> {t.legs[0].arrival_time}
+                              <span className="tl-dur">{Math.floor(t.legs[0].flight_duration_minutes/60)}h {t.legs[0].flight_duration_minutes%60}m</span>
+                              {t.legs[0].next_day && <span className="tl-next-day">+1天</span>}
+                            </div>
+                            <div className="tl-route">{t.legs[0].origin} → {t.legs[0].destination}</div>
+                            <div className="tl-meta">{t.legs[0].airline} {t.legs[0].flight_number} <span className="tl-price">${t.legs[0].price.toLocaleString()}</span></div>
                           </div>
-                        ))}
+                        </div>
+                        {/* Layover 1 */}
+                        {t.layovers[0] && (
+                          <div className="tl-layover">
+                            <div className="tl-layover-line"><div className="tl-layover-dash" /></div>
+                            <div className="tl-layover-body">⏳ 轉機等待 {t.layovers[0].duration_display}（{t.layovers[0].city}）</div>
+                          </div>
+                        )}
+                        {/* Leg 2 */}
+                        <div className="tl-leg">
+                          <div className="tl-line"><div className="tl-dot main" /><div className="tl-stem" /></div>
+                          <div className="tl-body">
+                            <div className="tl-times">
+                              {t.legs[1].departure_time} <span className="tl-arrow">→</span> {t.legs[1].arrival_time}
+                              <span className="tl-dur">{Math.floor(t.legs[1].flight_duration_minutes/60)}h {t.legs[1].flight_duration_minutes%60}m</span>
+                              {t.legs[1].next_day && <span className="tl-next-day">+1天</span>}
+                            </div>
+                            <div className="tl-route">{t.legs[1].origin} → {t.legs[1].destination}</div>
+                            <div className="tl-meta">{t.legs[1].airline} {t.legs[1].flight_number} <span className="tl-price">${t.legs[1].price.toLocaleString()}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="tl-section-label" style={{marginTop:12}}>✈ 回程 — {t.return_hours}h</div>
+                        {/* Leg 3 */}
+                        <div className="tl-leg">
+                          <div className="tl-line"><div className="tl-dot main" /><div className="tl-stem" /></div>
+                          <div className="tl-body">
+                            <div className="tl-times">
+                              {t.legs[2].departure_time} <span className="tl-arrow">→</span> {t.legs[2].arrival_time}
+                              <span className="tl-dur">{Math.floor(t.legs[2].flight_duration_minutes/60)}h {t.legs[2].flight_duration_minutes%60}m</span>
+                              {t.legs[2].next_day && <span className="tl-next-day">+1天</span>}
+                            </div>
+                            <div className="tl-route">{t.legs[2].origin} → {t.legs[2].destination}</div>
+                            <div className="tl-meta">{t.legs[2].airline} {t.legs[2].flight_number} <span className="tl-price">${t.legs[2].price.toLocaleString()}</span></div>
+                          </div>
+                        </div>
+                        {/* Layover 2 */}
+                        {t.layovers[1] && (
+                          <div className="tl-layover">
+                            <div className="tl-layover-line"><div className="tl-layover-dash" /></div>
+                            <div className="tl-layover-body">⏳ 轉機等待 {t.layovers[1].duration_display}（{t.layovers[1].city}）</div>
+                          </div>
+                        )}
+                        {/* Leg 4 */}
+                        <div className="tl-leg">
+                          <div className="tl-line"><div className="tl-dot out" /></div>
+                          <div className="tl-body">
+                            <div className="tl-times">
+                              {t.legs[3].departure_time} <span className="tl-arrow">→</span> {t.legs[3].arrival_time}
+                              <span className="tl-dur">{Math.floor(t.legs[3].flight_duration_minutes/60)}h {t.legs[3].flight_duration_minutes%60}m</span>
+                              {t.legs[3].next_day && <span className="tl-next-day">+1天</span>}
+                            </div>
+                            <div className="tl-route">{t.legs[3].origin} → {t.legs[3].destination}</div>
+                            <div className="tl-meta">{t.legs[3].airline} {t.legs[3].flight_number} <span className="tl-price">${t.legs[3].price.toLocaleString()}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="tl-summary">
+                          <span className="tl-summary-item">🕐 總耗時 {t.total_journey_hours}h</span>
+                          <span className="tl-summary-item">⏳ 轉機共 {Math.floor(t.total_transit_time_minutes/60)}h {t.total_transit_time_minutes%60}m</span>
+                        </div>
                       </div>
+
                       <div className="ticket-bottom">
                         <div>
                           <div className="total-label">{+pax > 1 ? `${pax} 人總價` : '總價'}</div>
