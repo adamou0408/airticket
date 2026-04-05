@@ -1,6 +1,6 @@
 # 旅遊規劃 App — 行程共編、外站票查找、記帳拆帳
 
-## 狀態：`in-review`
+## 狀態：`approved`
 
 ## 來源追溯
 - 原始需求：intake/raw/2026-04-05-travel-planner-app.md
