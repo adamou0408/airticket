@@ -210,6 +210,23 @@ def confirm_member(trip_id: int, user_id: int) -> bool:
     return True
 
 
+def unlock_trip(trip_id: int) -> bool:
+    """Unlock a finalized trip back to planning status."""
+    trip = _trips.get(trip_id)
+    if not trip:
+        return False
+    trip["status"] = TripStatus.planning
+    # Reset all confirmations
+    for m in trip["members"].values():
+        m["confirmed"] = False
+    return True
+
+
+def is_finalized(trip_id: int) -> bool:
+    trip = _trips.get(trip_id)
+    return trip is not None and trip["status"] == TripStatus.finalized
+
+
 def _to_summary(trip: dict) -> TripSummary:
     return TripSummary(
         id=trip["id"],

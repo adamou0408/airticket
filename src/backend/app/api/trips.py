@@ -8,6 +8,8 @@ Task: 2.4 — Invite and permission API
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.deps import get_current_user_id, get_optional_user_id
+from app.trips import comments as comments_mod
+from app.trips.comments import CommentCreate
 from app.trips.models import (
     CreateItemRequest,
     CreateTripRequest,
@@ -206,7 +208,73 @@ async def change_member_role(
     return {"message": "權限已更新"}
 
 
-# --- Finalize ---
+# --- Comments (Task 3.2) ---
+
+@router.post("/{trip_id}/items/{item_id}/comments", status_code=201)
+async def create_comment(
+    trip_id: int,
+    item_id: int,
+    req: CommentCreate,
+    user_id: int = Depends(get_current_user_id),
+):
+    """Add a comment to an itinerary item."""
+    if not is_member(trip_id, user_id):
+        raise HTTPException(status_code=403)
+    comment = comments_mod.add_comment(item_id, user_id, req.text)
+    comments_mod.record_edit(trip_id, user_id, "add_comment", f"留言於項目 {item_id}", item_id)
+    return comment
+
+
+@router.get("/{trip_id}/items/{item_id}/comments")
+async def list_comments(
+    trip_id: int,
+    item_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    """List comments for an itinerary item."""
+    if not is_member(trip_id, user_id):
+        raise HTTPException(status_code=403)
+    return comments_mod.get_comments(item_id)
+
+
+# --- Edit history (Task 3.3) ---
+
+@router.get("/{trip_id}/history")
+async def get_history(
+    trip_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    """Get edit history for a trip."""
+    if not is_member(trip_id, user_id):
+        raise HTTPException(status_code=403)
+    return comments_mod.get_edit_history(trip_id)
+
+
+# --- Finalize (Task 3.4) ---
+
+@router.post("/{trip_id}/finalize")
+async def initiate_finalize(
+    trip_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    """Initiate finalization — only owner can start, all members must confirm."""
+    if not is_owner(trip_id, user_id):
+        raise HTTPException(status_code=403, detail="只有發起人可以發起定案")
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404)
+    if trip["status"] == "finalized":
+        raise HTTPException(status_code=400, detail="已經定案了")
+    # Owner auto-confirms
+    confirm_member(trip_id, user_id)
+    comments_mod.record_edit(trip_id, user_id, "finalize", "發起定案，等待所有成員確認")
+    pending = [uid for uid, m in trip["members"].items() if not m["confirmed"]]
+    return {
+        "message": "已發起定案，等待成員確認",
+        "pending_count": len(pending),
+        "status": trip["status"],
+    }
+
 
 @router.post("/{trip_id}/confirm")
 async def confirm_trip(
@@ -218,7 +286,22 @@ async def confirm_trip(
         raise HTTPException(status_code=403)
     confirm_member(trip_id, user_id)
     trip = get_trip(trip_id)
-    return {
-        "message": "已確認",
-        "status": trip["status"] if trip else "unknown",
-    }
+    status = trip["status"] if trip else "unknown"
+    if status == "finalized":
+        comments_mod.record_edit(trip_id, user_id, "finalize", "全員確認，行程已定案")
+    return {"message": "已確認", "status": status}
+
+
+@router.post("/{trip_id}/unlock")
+async def unlock_trip(
+    trip_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    """Unlock a finalized trip for editing (owner only)."""
+    if not is_owner(trip_id, user_id):
+        raise HTTPException(status_code=403, detail="只有發起人可以解鎖")
+    from app.trips.service import unlock_trip as do_unlock
+    if not do_unlock(trip_id):
+        raise HTTPException(status_code=404)
+    comments_mod.record_edit(trip_id, user_id, "unlock", "解鎖行程，重新開放編輯")
+    return {"message": "行程已解鎖", "status": "planning"}
