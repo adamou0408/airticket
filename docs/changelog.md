@@ -33,3 +33,10 @@
 - **更新** | `specs/travel-planner-app/spec.md` | 回答剩餘開放問題：暫不商業化、不串接支付、不支援離線、搜尋用篩選器
 - **狀態變更** | `specs/travel-planner-app/spec.md` | `in-review` → `approved`（人類審核通過）
 - **新增** | `reviews/REVIEW-travel-planner-app-2026-04-05.md` | 審核通過，所有 21 項檢查全部通過
+- **狀態變更** | `specs/travel-planner-app/spec.md` | `approved` → `in-progress`（開始實作）
+- **實作** | Phase 1 | 外站票搜尋後端 — 爬蟲引擎、組合演算法、搜尋 API（21 tests）
+- **實作** | Phase 2 | 用戶驗證 + 行程規劃 + 邀請權限（14 tests）
+- **實作** | Phase 3 | 留言討論 + 編輯紀錄 + 定案流程（8 tests）
+- **實作** | Phase 4 | 記帳 + 拆帳結算引擎（10 tests）
+- **實作** | Phase 5 | 行程匯出 + 分享連結 + 結算分享（8 tests）
+- **狀態變更** | `specs/travel-planner-app/spec.md` | `in-progress` → `done`（全部後端實作完成，61 tests 通過）
