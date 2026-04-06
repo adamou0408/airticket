@@ -1,5 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { mockSearch, type OutstationTicket, type SearchResult, type FlightLeg } from './mock'
+
+const API = import.meta.env.VITE_API_URL || 'https://airticket-api.onrender.com/api'
+
+type SearchMode = 'one_way' | 'round_trip' | 'outstation'
+
+interface Airport { iata: string; name: string; city: string; country: string; city_zh: string; country_zh: string; popular: boolean }
+interface FlightItem { airline: string; flight_number: string; origin: string; destination: string; departure_date: string; departure_time: string; arrival_date: string; arrival_time: string; duration_minutes: number; price: number; source: string; next_day: boolean }
 
 // ─── Helpers ────────────────────────────────────────
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
@@ -104,22 +111,50 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .empty-text { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
 .empty-hint { font-size: 13px; }
 .filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.mode-tabs { display: flex; gap: 0; margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1.5px solid #E5E7EB; }
+.mode-tab { flex: 1; padding: 10px 8px; text-align: center; font-size: 13px; font-weight: 600; color: #6B7280; border: none; background: #F9FAFB; cursor: pointer; }
+.mode-tab.active { background: #FF6B35; color: #fff; }
+.airport-wrap { position: relative; }
+.airport-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1.5px solid #FF6B35; border-top: none; border-radius: 0 0 10px 10px; max-height: 200px; overflow-y: auto; z-index: 20; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.airport-item { padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+.airport-item:hover, .airport-item:active { background: #FFE8DD; }
+.airport-code { font-weight: 700; color: #FF6B35; margin-right: 6px; }
+.airport-city { color: #1A1A2E; }
+.airport-country { color: #9CA3AF; font-size: 12px; margin-left: 4px; }
+.flight-card { border: 1px solid #f0f0f0; border-radius: 12px; padding: 12px; margin-bottom: 10px; background: #fff; }
+.flight-top { display: flex; justify-content: space-between; align-items: center; }
+.flight-airline { font-weight: 700; font-size: 14px; }
+.flight-price { font-size: 18px; font-weight: 700; color: #FF6B35; }
+.flight-times { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 15px; font-weight: 600; }
+.flight-detail { font-size: 12px; color: #9CA3AF; }
+.source-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.source-real { background: #D1FAE5; color: #065F46; }
+.source-sim { background: #FEF3C7; color: #92400E; }
+.section-title { font-size: 14px; font-weight: 700; color: #004E89; margin: 16px 0 8px; }
 `
 
 // ─── Mock data ──────────────────────────────────────
 // (reuse from mock.ts)
 
-const AIRPORTS = [
-  { code: 'TPE', label: '台北桃園' },
-  { code: 'NRT', label: '東京成田' },
-  { code: 'KIX', label: '大阪關西' },
-  { code: 'ICN', label: '首爾仁川' },
-  { code: 'BKK', label: '曼谷' },
-  { code: 'SIN', label: '新加坡' },
-  { code: 'HKG', label: '香港' },
-  { code: 'CDG', label: '巴黎' },
-  { code: 'LAX', label: '洛杉磯' },
-]
+// Airport search hook
+function useAirportSearch() {
+  const [airports, setAirports] = useState<Airport[]>([])
+  useEffect(() => {
+    fetch(`${API}/airports/all`).then(r => r.json()).then(d => setAirports(d.airports || [])).catch(() => {})
+  }, [])
+  const search = useCallback((q: string): Airport[] => {
+    if (!q) return airports.filter(a => a.popular).slice(0, 15)
+    const ql = q.toLowerCase()
+    return airports.filter(a =>
+      a.iata.toLowerCase().startsWith(ql) ||
+      a.city.toLowerCase().includes(ql) ||
+      a.city_zh.includes(q) ||
+      a.country_zh.includes(q) ||
+      a.country.toLowerCase().includes(ql)
+    ).slice(0, 15)
+  }, [airports])
+  return { search, loaded: airports.length > 0 }
+}
 
 // ─── History ────────────────────────────────────────
 interface HistoryItem {
@@ -139,50 +174,96 @@ type Tab = 'search' | 'history'
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('search')
+  const [searchMode, setSearchMode] = useState<SearchMode>('round_trip')
   const [origin, setOrigin] = useState('TPE')
+  const [originText, setOriginText] = useState('TPE')
   const [dest, setDest] = useState('')
+  const [destText, setDestText] = useState('')
+  const [showOriginDrop, setShowOriginDrop] = useState(false)
+  const [showDestDrop, setShowDestDrop] = useState(false)
   const [dep, setDep] = useState('')
   const [ret, setRet] = useState('')
   const [pax, setPax] = useState('1')
   const [sort, setSort] = useState<'price' | 'transit'>('price')
   const [loading, setLoading] = useState(false)
+  // Outstation results
   const [results, setResults] = useState<OutstationTicket[]>([])
   const [directPrice, setDirectPrice] = useState<number | null>(null)
+  // Flight results (one-way / round-trip)
+  const [flightResults, setFlightResults] = useState<FlightItem[]>([])
+  const [returnFlights, setReturnFlights] = useState<FlightItem[]>([])
   const [showExplain, setShowExplain] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
 
-  const swap = () => { setOrigin(dest); setDest(origin) }
+  const { search: searchAirport, loaded: airportsLoaded } = useAirportSearch()
+
+  const selectOrigin = (a: Airport) => { setOrigin(a.iata); setOriginText(`${a.iata} ${a.city_zh || a.city}`); setShowOriginDrop(false) }
+  const selectDest = (a: Airport) => { setDest(a.iata); setDestText(`${a.iata} ${a.city_zh || a.city}`); setShowDestDrop(false) }
+
+  const swap = () => {
+    const tmpCode = origin; const tmpText = originText
+    setOrigin(dest); setOriginText(destText)
+    setDest(tmpCode); setDestText(tmpText)
+  }
 
   const search = async () => {
-    if (!origin || !dest || !dep || !ret) { alert('請填寫完整資訊'); return }
+    if (!origin || !dest || !dep) { alert('請填寫出發地、目的地和日期'); return }
+    if (searchMode !== 'one_way' && !ret) { alert('請填寫回程日期'); return }
+
     setLoading(true)
-    // Try real API, fallback to mock
-    let data: SearchResult
+    setResults([]); setFlightResults([]); setReturnFlights([]); setDirectPrice(null)
+
     try {
-      const API = import.meta.env.VITE_API_URL || 'https://airticket-api.onrender.com/api'
-      const res = await fetch(`${API}/tickets/search`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin, destination: dest, departure_date: dep, return_date: ret, passengers: +pax, sort_by: sort === 'price' ? 'price' : 'transit_time' }),
-      })
-      if (!res.ok) throw new Error()
-      data = await res.json()
-    } catch {
-      data = mockSearch(origin, dest, dep, ret, +pax || 1, sort)
+      if (searchMode === 'outstation') {
+        // Outstation ticket search
+        let data: SearchResult
+        try {
+          const res = await fetch(`${API}/tickets/search`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin, destination: dest, departure_date: dep, return_date: ret, passengers: +pax, sort_by: sort === 'price' ? 'price' : 'transit_time' }),
+          })
+          if (!res.ok) throw new Error()
+          data = await res.json()
+        } catch {
+          data = mockSearch(origin, dest, dep, ret, +pax || 1, sort)
+        }
+        setResults(data.results)
+        setDirectPrice(data.direct_price)
+        _saveHistory(data.results.length, data.results.length > 0 ? Math.min(...data.results.map(r => r.total_price)) : null, data.direct_price)
+      } else {
+        // One-way or round-trip flight search
+        try {
+          const res = await fetch(`${API}/flights/search`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin, destination: dest, departure_date: dep, return_date: searchMode === 'round_trip' ? ret : undefined, passengers: +pax, trip_type: searchMode, sort_by: sort === 'price' ? 'price' : 'departure' }),
+          })
+          if (!res.ok) throw new Error()
+          const data = await res.json()
+          setFlightResults(data.outbound_flights || [])
+          setReturnFlights(data.return_flights || [])
+          const total = (data.outbound_flights?.length || 0) + (data.return_flights?.length || 0)
+          _saveHistory(total, data.cheapest_outbound, data.cheapest_roundtrip)
+        } catch {
+          // Fallback: use mock outstation data as rough flight data
+          const data = mockSearch(origin, dest, dep, ret || dep, +pax || 1, sort)
+          setResults(data.results)
+          _saveHistory(data.results.length, null, null)
+        }
+      }
+    } finally {
+      setLoading(false)
     }
-    setResults(data.results)
-    setDirectPrice(data.direct_price)
-    // Save to history
-    const best = data.results.length > 0 ? Math.min(...data.results.map(r => r.total_price)) : null
+  }
+
+  const _saveHistory = (count: number, bestPrice: number | null, directPrice: number | null) => {
     const item: HistoryItem = {
       id: Date.now().toString(), origin, destination: dest,
       departure: dep, return_: ret, passengers: +pax || 1,
-      bestPrice: best, directPrice: data.direct_price,
-      count: data.results.length, saved: false,
+      bestPrice, directPrice, count, saved: false,
       time: new Date().toLocaleString('zh-TW'),
     }
     const updated = [item, ...history].slice(0, 50)
     setHistory(updated); saveHistory(updated)
-    setLoading(false)
   }
 
   const toggleStar = (id: string) => {
@@ -231,7 +312,7 @@ export default function App() {
       <div className="app">
         <div className="header">
           <h1>✈️ AirTicket 旅遊規劃</h1>
-          <p>外站票（四段票）搜尋 — 找到最便宜的飛法</p>
+          <p>機票搜尋 — 單程 · 來回 · 外站票{airportsLoaded ? ` · ${searchAirport('').length > 100 ? '6000+' : ''} 全球機場` : ''}</p>
         </div>
 
         <div className="tabs">
@@ -247,33 +328,66 @@ export default function App() {
               </div>
 
               <div className="card">
+                {/* Search mode tabs */}
+                <div className="mode-tabs">
+                  <button className={`mode-tab ${searchMode === 'one_way' ? 'active' : ''}`} onClick={() => setSearchMode('one_way')}>單程</button>
+                  <button className={`mode-tab ${searchMode === 'round_trip' ? 'active' : ''}`} onClick={() => setSearchMode('round_trip')}>來回</button>
+                  <button className={`mode-tab ${searchMode === 'outstation' ? 'active' : ''}`} onClick={() => setSearchMode('outstation')}>外站票</button>
+                </div>
+
+                {/* Airport inputs with search */}
                 <div className="row" style={{ alignItems: 'flex-end' }}>
-                  <div className="form-group">
+                  <div className="form-group airport-wrap">
                     <label>出發地</label>
-                    <input className="input" value={origin} onChange={e => setOrigin(e.target.value.toUpperCase())} placeholder="TPE" />
+                    <input className="input" value={originText} placeholder="搜尋機場..."
+                      onChange={e => { setOriginText(e.target.value); setShowOriginDrop(true) }}
+                      onFocus={() => setShowOriginDrop(true)}
+                      onBlur={() => setTimeout(() => setShowOriginDrop(false), 200)} />
+                    {showOriginDrop && (
+                      <div className="airport-dropdown">
+                        {searchAirport(originText).map(a => (
+                          <div key={a.iata} className="airport-item" onMouseDown={() => selectOrigin(a)}>
+                            <span className="airport-code">{a.iata}</span>
+                            <span className="airport-city">{a.city_zh || a.city}</span>
+                            <span className="airport-country">{a.country_zh || a.country}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <button className="swap-btn" onClick={swap}>⇄</button>
-                  <div className="form-group">
+                  <div className="form-group airport-wrap">
                     <label>目的地</label>
-                    <input className="input" value={dest} onChange={e => setDest(e.target.value.toUpperCase())} placeholder="NRT" />
+                    <input className="input" value={destText} placeholder="搜尋機場..."
+                      onChange={e => { setDestText(e.target.value); setShowDestDrop(true) }}
+                      onFocus={() => setShowDestDrop(true)}
+                      onBlur={() => setTimeout(() => setShowDestDrop(false), 200)} />
+                    {showDestDrop && (
+                      <div className="airport-dropdown">
+                        {searchAirport(destText).map(a => (
+                          <div key={a.iata} className="airport-item" onMouseDown={() => selectDest(a)}>
+                            <span className="airport-code">{a.iata}</span>
+                            <span className="airport-city">{a.city_zh || a.city}</span>
+                            <span className="airport-country">{a.country_zh || a.country}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="chips">
-                  {AIRPORTS.filter(a => a.code !== origin).map(a => (
-                    <button key={a.code} className={`chip ${dest === a.code ? 'active' : ''}`} onClick={() => setDest(a.code)}>{a.label}</button>
-                  ))}
-                </div>
-
+                {/* Dates */}
                 <div className="row" style={{ marginTop: 14 }}>
                   <div className="form-group">
                     <label>去程日期</label>
                     <input className="input" type="date" value={dep} onChange={e => setDep(e.target.value)} />
                   </div>
-                  <div className="form-group">
-                    <label>回程日期</label>
-                    <input className="input" type="date" value={ret} onChange={e => setRet(e.target.value)} />
-                  </div>
+                  {searchMode !== 'one_way' && (
+                    <div className="form-group">
+                      <label>回程日期</label>
+                      <input className="input" type="date" value={ret} onChange={e => setRet(e.target.value)} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="row">
@@ -285,16 +399,69 @@ export default function App() {
                     <label>排序</label>
                     <div className="sort-row">
                       <button className={`sort-btn ${sort === 'price' ? 'active' : ''}`} onClick={() => setSort('price')}>💰 價格</button>
-                      <button className={`sort-btn ${sort === 'transit' ? 'active' : ''}`} onClick={() => setSort('transit')}>⏱️ 轉機</button>
+                      <button className={`sort-btn ${sort === 'transit' ? 'active' : ''}`} onClick={() => setSort('transit')}>⏱️ {searchMode === 'outstation' ? '轉機' : '時間'}</button>
                     </div>
                   </div>
                 </div>
 
                 <button className="btn btn-primary" onClick={search} disabled={loading}>
-                  {loading ? '搜尋中...' : '🔍 搜尋外站票'}
+                  {loading ? '搜尋中...' : searchMode === 'outstation' ? '🔍 搜尋外站票' : searchMode === 'one_way' ? '🔍 搜尋單程機票' : '🔍 搜尋來回機票'}
                 </button>
               </div>
 
+              {/* Flight results (one-way / round-trip) */}
+              {flightResults.length > 0 && (
+                <>
+                  <div className="section-title">✈ 去程航班 ({flightResults.length})</div>
+                  {flightResults.map((f, i) => (
+                    <div className="flight-card" key={`out-${i}`}>
+                      <div className="flight-top">
+                        <span className="flight-airline">{f.airline} <span style={{fontWeight:400, color:'#9CA3AF', fontSize:12}}>{f.flight_number}</span></span>
+                        <span className="flight-price">TWD {f.price.toLocaleString()}</span>
+                      </div>
+                      <div className="flight-times">
+                        <span>{fmtDate(f.departure_date)} {f.departure_time}</span>
+                        <span style={{color:'#9CA3AF'}}>→</span>
+                        <span>{f.arrival_time}{f.next_day ? ' (+1天)' : ''}</span>
+                        <span className="tl-dur">{fmtDurMin(f.duration_minutes)}</span>
+                      </div>
+                      <div className="flight-detail">
+                        {f.origin} → {f.destination}
+                        <span className={`source-badge ${f.source === 'simulated' ? 'source-sim' : 'source-real'}`} style={{marginLeft:8}}>
+                          {f.source === 'simulated' ? '⚠️ 模擬' : `✅ ${f.source}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {returnFlights.length > 0 && (
+                    <>
+                      <div className="section-title">✈ 回程航班 ({returnFlights.length})</div>
+                      {returnFlights.map((f, i) => (
+                        <div className="flight-card" key={`ret-${i}`}>
+                          <div className="flight-top">
+                            <span className="flight-airline">{f.airline} <span style={{fontWeight:400, color:'#9CA3AF', fontSize:12}}>{f.flight_number}</span></span>
+                            <span className="flight-price">TWD {f.price.toLocaleString()}</span>
+                          </div>
+                          <div className="flight-times">
+                            <span>{fmtDate(f.departure_date)} {f.departure_time}</span>
+                            <span style={{color:'#9CA3AF'}}>→</span>
+                            <span>{f.arrival_time}{f.next_day ? ' (+1天)' : ''}</span>
+                            <span className="tl-dur">{fmtDurMin(f.duration_minutes)}</span>
+                          </div>
+                          <div className="flight-detail">
+                            {f.origin} → {f.destination}
+                            <span className={`source-badge ${f.source === 'simulated' ? 'source-sim' : 'source-real'}`} style={{marginLeft:8}}>
+                              {f.source === 'simulated' ? '⚠️ 模擬' : `✅ ${f.source}`}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Outstation results */}
               {results.length > 0 && (
                 <>
                   <div className="result-header">
