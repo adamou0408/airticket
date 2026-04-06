@@ -281,10 +281,27 @@ export default function App() {
           const total = (data.outbound_flights?.length || 0) + (data.return_flights?.length || 0)
           _saveHistory(total, data.cheapest_outbound, data.cheapest_roundtrip)
         } catch {
-          // Fallback: use mock outstation data as rough flight data
-          const data = mockSearch(origin, dest, dep, ret || dep, +pax || 1, sort)
-          setResults(data.results)
-          _saveHistory(data.results.length, null, null)
+          // Fallback: generate mock flight data for one-way/round-trip
+          const mockFlights = (orig: string, dst: string, d: string): FlightItem[] => {
+            const airlines = [['長榮航空','BR'],['星宇航空','JX'],['華航','CI'],['國泰航空','CX']]
+            return airlines.map(([name, code], i) => ({
+              airline: name, flight_number: `${code}${100+i*50+Math.floor(Math.random()*50)}`,
+              origin: orig, destination: dst,
+              departure_date: d, departure_time: `${8+i*3}:${['00','15','30','45'][i%4]}`,
+              arrival_date: d, arrival_time: `${11+i*3}:${['30','45','00','15'][i%4]}`,
+              duration_minutes: 150+Math.floor(Math.random()*120),
+              price: (3000+Math.floor(Math.random()*8000))*(+pax||1),
+              source: 'simulated', next_day: false,
+            }))
+          }
+          const outbound = mockFlights(origin, dest, dep).sort((a,b) => a.price - b.price)
+          setFlightResults(outbound)
+          if (searchMode === 'round_trip' && ret) {
+            const retFlights = mockFlights(dest, origin, ret).sort((a,b) => a.price - b.price)
+            setReturnFlights(retFlights)
+          }
+          const bestPrice = outbound.length > 0 ? outbound[0].price : null
+          _saveHistory(outbound.length, bestPrice, null)
         }
       }
     } finally {
