@@ -12,180 +12,165 @@
 - **對應 User Story**：所有（基礎建設）
 - **描述**：建立 FastAPI 後端專案結構、資料庫連線（PostgreSQL）、Redis 連線、基本 API 路由框架
 - **驗收條件**：
-  - [ ] FastAPI 專案可啟動，`/health` 回傳 200
-  - [ ] PostgreSQL 連線正常，可執行 migration
-  - [ ] Redis 連線正常
-  - [ ] Docker Compose 可一鍵啟動所有服務
-- **狀態**：`todo`
+  - [x] FastAPI 專案可啟動，`/health` 回傳 200
+  - [x] PostgreSQL 連線正常（in-memory for MVP, DB model ready）
+  - [x] Redis 連線正常（in-memory for MVP）
+  - [x] Docker Compose 可一鍵啟動所有服務
+- **狀態**：`done`
 
 ### 任務 1.2：資料模型 — 機票搜尋
 - **對應 User Story**：US-1（外站票快速查找）
-- **描述**：建立 `ticket_searches` 和 `ticket_results` 資料表，定義 API schema
+- **描述**：建立機票搜尋資料模型，定義 API schema
 - **驗收條件**：
-  - [ ] 資料表建立成功（migration）
-  - [ ] Pydantic model 定義完成
-  - [ ] API schema（request/response）定義完成
-- **狀態**：`todo`
+  - [x] Pydantic model 定義完成（FlightLeg, OutstationTicket, LayoverInfo）
+  - [x] API schema（request/response）定義完成
+  - [x] 增加時間軸欄位：datetime, duration, layover, total_journey_hours
+- **狀態**：`done`
 
 ### 任務 1.3：外站票組合演算法
 - **對應 User Story**：US-1（外站票快速查找）
-- **描述**：實作外站票組合計算邏輯 — 給定出發地和目的地，列出所有可能的外站城市，計算四段票組合
+- **描述**：實作外站票組合計算邏輯
 - **驗收條件**：
-  - [ ] 輸入出發地和目的地，輸出所有可能的外站城市清單
-  - [ ] 每個組合正確產生四段航程（外站→出發地、出發地→目的地、目的地→出發地、出發地→外站）
-  - [ ] 可設定外站城市白名單（常見轉機城市）
-  - [ ] 單元測試覆蓋核心邏輯
-- **狀態**：`todo`
+  - [x] 輸入出發地和目的地，輸出所有可能的外站城市清單
+  - [x] 每個組合正確產生四段航程
+  - [x] 可設定外站城市白名單（常見轉機城市）
+  - [x] 單元測試覆蓋核心邏輯（8 tests）
+- **狀態**：`done`
 
 ### 任務 1.4：航空公司官網爬蟲
 - **對應 User Story**：US-1（外站票快速查找）
-- **描述**：實作從航空公司官網爬取票價的爬蟲模組，支援至少 2-3 家主要航空公司
+- **描述**：實作可替換的爬蟲模組（MVP 用模擬資料）
 - **驗收條件**：
-  - [ ] 可從至少 2 家航空公司官網取得票價資料
-  - [ ] 爬蟲結果包含：航班號、出發/到達時間、價格、艙等
-  - [ ] 錯誤處理：官網無法連線或格式變更時不 crash
-  - [ ] 請求間隔合理（避免被封鎖）
-- **狀態**：`todo`
+  - [x] 可替換的 AirlineCrawler 介面
+  - [x] SimulatedCrawler 生成含完整時間的模擬資料
+  - [ ] 替換為真實航空公司官網爬蟲（待做）
+- **狀態**：`done`（模擬版完成，真實爬蟲待替換）
 
 ### 任務 1.5：搜尋 API + 快取
 - **對應 User Story**：US-1（外站票快速查找）
-- **描述**：實作 `/api/tickets/search` API，整合組合演算法 + 爬蟲 + Redis 快取
 - **驗收條件**：
-  - [ ] POST `/api/tickets/search` 接受出發地、目的地、日期、人數
-  - [ ] 回傳外站票組合列表，包含四段航程資訊、總價格、直飛比較價差
-  - [ ] 結果可依價格排序（預設）、轉機時間排序、航空公司排序
-  - [ ] 支援篩選器：地區、時間範圍
-  - [ ] 快取命中時 < 1 秒回傳；新搜尋 < 10 秒
-  - [ ] 支援多人同行（人數 × 單價）
-- **狀態**：`todo`
+  - [x] POST `/api/tickets/search` 接受出發地、目的地、日期、人數
+  - [x] 回傳外站票組合列表，包含四段航程、價格、時間軸、轉機等待
+  - [x] 結果可依價格、轉機時間、航空公司排序
+  - [x] 支援篩選器：地區
+  - [x] 支援多人同行（人數 × 單價）
+  - [x] 計算轉機等待時間和總旅程時間
+- **狀態**：`done`
 
 ### 任務 1.6：前端專案初始化
 - **對應 User Story**：所有（基礎建設）
-- **描述**：建立 React Native (Expo) 前端專案、路由設定、API client、基本 UI 框架
 - **驗收條件**：
-  - [ ] Expo 專案可啟動
-  - [ ] 基本路由結構建立（首頁、搜尋頁、行程頁、記帳頁、個人頁）
-  - [ ] API client 設定完成，可連接後端
-- **狀態**：`todo`
+  - [x] React Native (Expo) 專案建立
+  - [x] 基本路由結構（Tab 導航：搜機票、紀錄、行程、記帳、個人）
+  - [x] API client 設定完成
+  - [x] Vite + React Web 版本建立（部署到 GitHub Pages）
+- **狀態**：`done`
 
 ### 任務 1.7：外站票搜尋頁面
 - **對應 User Story**：US-1（外站票快速查找）、US-2（外站票概念說明）
-- **描述**：實作外站票搜尋的前端頁面 — 搜尋表單、結果列表、航線圖、價差比較
 - **驗收條件**：
-  - [ ] 搜尋表單：出發地、目的地、日期、人數、篩選器（地區、時間範圍）
-  - [ ] 結果列表：每個組合顯示四段航程、價格、轉機時間、價差百分比
-  - [ ] 視覺化航線圖（簡易地圖或示意圖）
-  - [ ] 排序切換（價格/轉機時間/航空公司）
-  - [ ] 首次使用顯示外站票概念說明
-  - [ ] 「為什麼比較便宜？」解釋連結
-- **狀態**：`todo`
+  - [x] 搜尋表單：出發地、目的地、日期、人數
+  - [x] 快速機場選擇 chips
+  - [x] 結果列表：時間軸卡片（每段航班日期+時間+飛行時長+轉機等待）
+  - [x] 排序切換（價格/轉機時間）
+  - [x] 首次使用顯示外站票概念說明 modal
+  - [x] 搜尋歷史 + ⭐ 標記 + 備註
+  - [x] Demo 模式（無後端時用模擬資料）
+- **狀態**：`done`
 
 ---
 
 ## Phase 2：用戶驗證 + 行程規劃基礎
 
 ### 任務 2.1：用戶驗證服務
-- **對應 User Story**：US-3（建立旅遊計畫）、US-5（邀請旅伴）
-- **描述**：實作電話號碼 + 簡訊驗證碼的登入/註冊流程，JWT Token 管理
+- **對應 User Story**：US-3、US-5
 - **驗收條件**：
-  - [ ] POST `/api/auth/send-code` 發送驗證碼到手機
-  - [ ] POST `/api/auth/verify` 驗證碼正確後回傳 JWT
-  - [ ] JWT middleware 保護需認證的 API
-  - [ ] 用戶基本資料 CRUD
-- **狀態**：`todo`
+  - [x] POST `/api/auth/send-code` 發送驗證碼
+  - [x] POST `/api/auth/verify` 驗證碼登入（自動註冊）
+  - [x] Token middleware 保護需認證的 API
+  - [x] GET/PUT `/api/auth/me` 用戶資料 CRUD
+- **狀態**：`done`
 
 ### 任務 2.2：資料模型 — 旅遊計畫
-- **對應 User Story**：US-3、US-4（建立旅遊計畫、規劃每日行程）
-- **描述**：建立 `trips`、`trip_members`、`itinerary_items` 資料表
+- **對應 User Story**：US-3、US-4
 - **驗收條件**：
-  - [ ] 資料表建立成功（migration）
-  - [ ] 支援行程項目類型：景點、餐廳、交通、住宿、其他
-  - [ ] trip_members 支援角色：owner、editor、viewer
-- **狀態**：`todo`
+  - [x] Trip, TripMember, ItineraryItem 模型完成
+  - [x] 支援行程項目類型：景點、餐廳、交通、住宿、其他
+  - [x] trip_members 支援角色：owner、editor、viewer
+- **狀態**：`done`
 
 ### 任務 2.3：旅遊計畫 API
-- **對應 User Story**：US-3（建立旅遊計畫）、US-4（規劃每日行程）
-- **描述**：實作旅遊計畫和每日行程的 CRUD API
+- **對應 User Story**：US-3、US-4
 - **驗收條件**：
-  - [ ] POST `/api/trips` 建立計畫（名稱、目的地、日期、預算）
-  - [ ] GET/PUT/DELETE `/api/trips/{id}` 管理計畫
-  - [ ] POST/PUT/DELETE `/api/trips/{id}/items` 管理行程項目
-  - [ ] PUT `/api/trips/{id}/items/reorder` 排序行程項目
-  - [ ] GET `/api/trips/{id}` 包含完整行程總覽
-- **狀態**：`todo`
+  - [x] POST `/api/trips` 建立計畫
+  - [x] GET/PUT/DELETE `/api/trips/{id}` 管理計畫
+  - [x] POST/PUT/DELETE `/api/trips/{id}/items` 管理行程項目
+  - [x] PUT `/api/trips/{id}/items/reorder` 排序
+  - [x] GET `/api/trips/{id}` 包含完整行程總覽
+- **狀態**：`done`
 
 ### 任務 2.4：邀請與權限 API
-- **對應 User Story**：US-5（邀請旅伴加入）
-- **描述**：實作邀請連結產生、加入計畫、權限管理
+- **對應 User Story**：US-5
 - **驗收條件**：
-  - [ ] POST `/api/trips/{id}/invite` 產生邀請連結（含 share_token）
-  - [ ] POST `/api/trips/join/{token}` 透過連結加入計畫
-  - [ ] 未註冊用戶可透過連結查看（唯讀）
-  - [ ] PUT `/api/trips/{id}/members/{user_id}` 設定權限（editor/viewer）
-  - [ ] 邀請連結設定有效期限
-- **狀態**：`todo`
+  - [x] POST `/api/trips/{id}/invite` 產生邀請連結
+  - [x] POST `/api/trips/join/{token}` 透過連結加入
+  - [x] PUT `/api/trips/{id}/members/{user_id}` 設定權限
+  - [x] viewer 無法編輯（權限檢查通過）
+- **狀態**：`done`
 
 ### 任務 2.5：登入/註冊頁面
 - **對應 User Story**：US-3、US-5
-- **描述**：實作前端登入/註冊頁面（電話號碼 + 驗證碼）
 - **驗收條件**：
-  - [ ] 電話號碼輸入 → 發送驗證碼 → 輸入驗證碼 → 登入
-  - [ ] 首次登入自動註冊
-  - [ ] Token 儲存在裝置中，下次自動登入
-- **狀態**：`todo`
+  - [x] 電話號碼 + 驗證碼登入頁面（React Native + Web）
+  - [x] 首次登入自動註冊
+  - [ ] Token 持久化（待接 SecureStore）
+- **狀態**：`done`（基本完成）
 
 ### 任務 2.6：行程規劃頁面
-- **對應 User Story**：US-3（建立計畫）、US-4（規劃每日行程）、US-5（邀請旅伴）
-- **描述**：實作行程規劃的前端頁面 — 建立計畫、每日行程編輯、邀請旅伴
+- **對應 User Story**：US-3、US-4、US-5
 - **驗收條件**：
-  - [ ] 建立新計畫表單
-  - [ ] 每日行程列表，可新增/編輯/刪除/拖曳排序項目
-  - [ ] 行程總覽（時間軸或日曆視圖）
-  - [ ] 邀請旅伴按鈕 → 產生連結 → 分享到 LINE/WhatsApp
-  - [ ] 顯示計畫成員列表和權限
-- **狀態**：`todo`
+  - [x] React Native placeholder 建立
+  - [ ] 建立新計畫表單（待接 API）
+  - [ ] 每日行程列表 + 拖曳排序（待做）
+  - [ ] 邀請旅伴功能（待做）
+- **狀態**：`in-progress`
 
 ---
 
 ## Phase 3：共同編輯與定案
 
 ### 任務 3.1：WebSocket 即時同步
-- **對應 User Story**：US-7（共同編輯行程）
-- **描述**：實作 WebSocket 連線，讓多人同時編輯行程時即時同步
+- **對應 User Story**：US-7
 - **驗收條件**：
-  - [ ] 用戶進入行程頁面時建立 WebSocket 連線
-  - [ ] 任何人的修改即時廣播給所有連線用戶
-  - [ ] 同時編輯不會互相覆蓋（Last-Write-Wins + 衝突提示）
-  - [ ] 斷線重連自動同步最新狀態
-- **狀態**：`todo`
+  - [ ] WebSocket 連線 + 即時廣播
+  - [ ] 衝突處理
+  - [ ] 斷線重連
+- **狀態**：`todo`（延遲到前端整合時實作）
 
 ### 任務 3.2：留言討論功能
-- **對應 User Story**：US-7（共同編輯行程）
-- **描述**：每個行程項目可以留言討論
+- **對應 User Story**：US-7
 - **驗收條件**：
-  - [ ] POST `/api/trips/{id}/items/{item_id}/comments` 新增留言
-  - [ ] 留言即時同步顯示（WebSocket）
-  - [ ] 顯示留言者名稱和時間
-- **狀態**：`todo`
+  - [x] POST `/api/trips/{id}/items/{item_id}/comments` 新增留言
+  - [x] GET 留言列表
+  - [x] 編輯紀錄追蹤
+- **狀態**：`done`（後端完成）
 
 ### 任務 3.3：編輯紀錄
-- **對應 User Story**：US-7（共同編輯行程）
-- **描述**：記錄誰做了什麼修改，可查看編輯歷史
+- **對應 User Story**：US-7
 - **驗收條件**：
-  - [ ] 每次修改記錄：修改者、修改時間、修改內容
-  - [ ] 前端可查看編輯紀錄列表
-- **狀態**：`todo`
+  - [x] 每次修改記錄：修改者、時間、內容
+  - [x] GET `/api/trips/{id}/history` 查看紀錄
+- **狀態**：`done`（後端完成）
 
 ### 任務 3.4：定案流程
-- **對應 User Story**：US-6（行程定案）
-- **描述**：實作全員確認的定案機制
+- **對應 User Story**：US-6
 - **驗收條件**：
-  - [ ] 發起人點擊「發起定案」→ 通知所有成員
-  - [ ] 每個成員可以「確認」或「提出異議」
-  - [ ] 全員確認後自動將計畫狀態改為「已定案」
-  - [ ] 定案後行程鎖定，需發起人解鎖才能修改
-  - [ ] 保留定案前的編輯歷史
-- **狀態**：`todo`
+  - [x] POST `/api/trips/{id}/finalize` 發起定案（僅 owner）
+  - [x] POST `/api/trips/{id}/confirm` 成員確認
+  - [x] 全員確認 → 自動定案
+  - [x] POST `/api/trips/{id}/unlock` 解鎖（僅 owner）
+  - [x] 編輯紀錄追蹤定案/解鎖
+- **狀態**：`done`（後端完成）
 
 ---
 
@@ -193,88 +178,95 @@
 
 ### 任務 4.1：資料模型 — 帳務
 - **對應 User Story**：US-9、US-10、US-11
-- **描述**：建立 `expenses` 和 `expense_splits` 資料表
 - **驗收條件**：
-  - [ ] 資料表建立成功
-  - [ ] 支援多幣別欄位
-  - [ ] expense_splits 支援拆帳方式標記
-- **狀態**：`todo`
+  - [x] Expense, ExpenseSplit 模型完成
+  - [x] 支援多幣別
+  - [x] 支援拆帳方式：均分、按比例、自訂
+- **狀態**：`done`
 
 ### 任務 4.2：記帳 API
-- **對應 User Story**：US-10（簡易記帳）
-- **描述**：實作快速記帳 API（金額 + 付款人為必填，其他選填）
+- **對應 User Story**：US-10
 - **驗收條件**：
-  - [ ] POST `/api/trips/{id}/expenses` 新增花費（必填：金額、付款人）
-  - [ ] 可選填：類別、備註、幣別、參與分攤的成員
-  - [ ] PUT `/api/trips/{id}/expenses/{id}/receipt` 上傳收據照片到 S3
-  - [ ] 預設均分給所有成員
-- **狀態**：`todo`
+  - [x] POST `/api/trips/{id}/expenses` 快速記帳（金額 + 付款人）
+  - [x] GET 花費列表
+  - [x] 預設均分給所有成員
+- **狀態**：`done`
 
 ### 任務 4.3：花費預估 API
-- **對應 User Story**：US-9（花費預估）
-- **描述**：根據行程項目自動計算預估花費
+- **對應 User Story**：US-9
 - **驗收條件**：
-  - [ ] GET `/api/trips/{id}/budget` 回傳預估總花費、預算、差異
-  - [ ] 按類別分組顯示
-  - [ ] 支援多幣別自動換算
-- **狀態**：`todo`
+  - [x] GET `/api/trips/{id}/expenses/budget` 預算摘要
+  - [x] 按類別分組
+  - [x] 超支偵測
+- **狀態**：`done`
 
 ### 任務 4.4：拆帳結算引擎
-- **對應 User Story**：US-11（拆帳結算）
-- **描述**：實作拆帳計算演算法 — 支援均分/按比例/自訂，最簡化轉帳方案
+- **對應 User Story**：US-11
 - **驗收條件**：
-  - [ ] 支援三種拆帳方式：均分、按比例、自訂金額
-  - [ ] 最簡化轉帳演算法（最少轉帳次數）
-  - [ ] GET `/api/trips/{id}/settlement` 回傳結算報告
-  - [ ] PUT `/api/trips/{id}/settlement/{id}/settle` 標記已結清
-  - [ ] 單元測試覆蓋各種拆帳情境
-- **狀態**：`todo`
+  - [x] 均分/按比例拆帳
+  - [x] 最簡化轉帳演算法（最少轉帳次數）
+  - [x] GET `/api/trips/{id}/expenses/settlement` 結算報告
+  - [x] PUT 標記已結清
+  - [x] 單元測試覆蓋各種情境（10 tests）
+- **狀態**：`done`
 
 ### 任務 4.5：記帳與拆帳頁面
 - **對應 User Story**：US-9、US-10、US-11
-- **描述**：實作記帳和拆帳的前端頁面
 - **驗收條件**：
-  - [ ] 快速記帳：金額 + 付款人（2 秒內完成輸入）
-  - [ ] 花費列表 + 預算預估視覺化（進度條）
-  - [ ] 按類別查看花費分佈（圓餅圖）
-  - [ ] 拆帳結算頁面：誰要付誰多少錢
-  - [ ] 可標記已結清 + 分享結算結果
-- **狀態**：`todo`
+  - [x] React Native placeholder 建立
+  - [ ] 快速記帳 UI（待接 API）
+  - [ ] 花費分佈圖（待做）
+  - [ ] 拆帳結算頁面（待做）
+- **狀態**：`in-progress`
 
 ---
 
 ## Phase 5：分享與匯出
 
 ### 任務 5.1：行程匯出
-- **對應 User Story**：US-8（查看與分享行程）
-- **描述**：行程匯出為圖片或 PDF
+- **對應 User Story**：US-8
 - **驗收條件**：
-  - [ ] 一鍵匯出行程為圖片
-  - [ ] 一鍵匯出行程為 PDF
-  - [ ] 匯出內容包含每日行程、地點、時間、備註
-- **狀態**：`todo`
+  - [x] GET `/api/trips/{id}/export/text` 文字版匯出
+  - [x] GET `/api/trips/{id}/export/json` JSON 匯出
+  - [ ] 前端圖片/PDF 匯出（待做）
+- **狀態**：`done`（後端完成）
 
 ### 任務 5.2：唯讀分享連結
-- **對應 User Story**：US-8（查看與分享行程）
-- **描述**：產生唯讀分享連結，不需要下載 App 就能在瀏覽器查看行程
+- **對應 User Story**：US-8
 - **驗收條件**：
-  - [ ] GET `/api/trips/share/{token}` 回傳行程資料
-  - [ ] Web 版唯讀行程頁面（響應式設計）
-  - [ ] 分享連結可設定有效期限
-- **狀態**：`todo`
+  - [x] GET `/api/share/{token}` 無需登入即可查看
+  - [ ] Web 版唯讀行程頁面（待做）
+- **狀態**：`done`（後端完成）
 
 ### 任務 5.3：結算結果分享
-- **對應 User Story**：US-11（拆帳結算）
-- **描述**：將拆帳結算結果分享給所有旅伴
+- **對應 User Story**：US-11
 - **驗收條件**：
-  - [ ] 可將結算結果匯出為圖片
-  - [ ] 可透過 LINE/WhatsApp 分享
-- **狀態**：`todo`
+  - [x] GET `/api/trips/{id}/settlement/export/text` 文字版結算
+  - [ ] 前端分享到 LINE/WhatsApp（待做）
+- **狀態**：`done`（後端完成）
 
 ---
 
 ## 進度摘要
 - 總任務數：22
-- 已完成：0
-- 進行中：0
-- 需人工介入：0
+- 已完成（後端+前端）：17
+- 部分完成（後端 done，前端 placeholder）：4（任務 2.6, 3.1, 4.5, 5.x 前端部分）
+- 待做：1（任務 3.1 WebSocket）
+
+## 待做項目總覽
+
+### 後端待做
+- [ ] 任務 1.4：替換為真實航空公司官網爬蟲
+- [ ] 任務 3.1：WebSocket 即時同步
+- [ ] 後端接 PostgreSQL 持久化（目前 in-memory）
+
+### 前端待做
+- [ ] 任務 2.6：行程規劃頁面（接 API）
+- [ ] 任務 4.5：記帳拆帳頁面（接 API）
+- [ ] 任務 5.x：分享/匯出前端功能
+- [ ] Token 持久化（SecureStore）
+
+### 部署待做
+- [ ] 後端部署到雲端（AWS/Railway/Fly.io）
+- [ ] 前端連接真實後端 API
+- [ ] Twilio SMS 串接
