@@ -1,224 +1,177 @@
-"""Trip API endpoints.
-
-Spec: specs/travel-planner-app/spec.md — US-3, US-4, US-5, US-6, US-7
-Task: 2.3 — Trip CRUD API
-Task: 2.4 — Invite and permission API
-"""
+"""Trip API endpoints — database-backed."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user_id, get_optional_user_id
+from app.core.database import get_db
 from app.trips import comments as comments_mod
 from app.trips.comments import CommentCreate
 from app.trips.models import (
-    CreateItemRequest,
-    CreateTripRequest,
-    InviteResponse,
-    ItineraryItem,
-    ReorderRequest,
-    SetRoleRequest,
-    TripDetail,
-    TripSummary,
+    CreateItemRequest, CreateTripRequest, InviteResponse,
+    ReorderRequest, SetRoleRequest,
 )
-from app.trips.service import (
-    add_item,
-    can_edit,
-    confirm_member,
-    create_trip,
-    delete_item,
-    delete_trip,
-    get_trip,
-    get_trip_by_token,
-    get_trip_detail,
-    is_member,
-    is_owner,
-    join_trip,
-    list_user_trips,
-    reorder_items,
-    set_member_role,
-    update_item,
-    update_trip,
-)
+from app.trips import service as trip_svc
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
 
-@router.post("", response_model=TripSummary, status_code=201)
-async def create_new_trip(
-    req: CreateTripRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Create a new trip plan."""
-    return create_trip(req, user_id)
+# ─── Helpers ─────────────────────────────────────────
+
+def _trip_to_summary(trip):
+    return {
+        "id": trip.id, "name": trip.name, "destination": trip.destination,
+        "start_date": trip.start_date, "end_date": trip.end_date,
+        "budget": trip.budget, "currency": trip.currency,
+        "status": trip.status, "owner_id": trip.owner_id,
+        "member_count": len(trip.members), "share_token": trip.share_token,
+    }
 
 
-@router.get("", response_model=list[TripSummary])
-async def list_my_trips(user_id: int = Depends(get_current_user_id)):
-    """List all trips the current user is a member of."""
-    return list_user_trips(user_id)
+def _trip_to_detail(trip):
+    return {
+        **_trip_to_summary(trip),
+        "members": [{"user_id": m.user_id, "name": "", "role": m.role, "confirmed": m.confirmed} for m in trip.members],
+        "items": sorted([{
+            "id": i.id, "day_number": i.day_number, "order": i.order,
+            "type": i.type, "name": i.name, "time": i.time,
+            "location": i.location, "note": i.note,
+            "estimated_cost": i.estimated_cost, "created_by": i.created_by,
+        } for i in trip.items], key=lambda x: (x["day_number"], x["order"])),
+    }
 
 
-@router.get("/{trip_id}", response_model=TripDetail)
-async def get_trip_details(trip_id: int, user_id: int = Depends(get_current_user_id)):
-    """Get full trip details including itinerary and members."""
-    if not is_member(trip_id, user_id):
-        raise HTTPException(status_code=403, detail="你不是這個旅遊計畫的成員")
-    detail = get_trip_detail(trip_id)
-    if not detail:
+def _item_to_dict(item):
+    return {
+        "id": item.id, "day_number": item.day_number, "order": item.order,
+        "type": item.type, "name": item.name, "time": item.time,
+        "location": item.location, "note": item.note,
+        "estimated_cost": item.estimated_cost, "created_by": item.created_by,
+    }
+
+
+async def _get_trip_or_404(db: AsyncSession, trip_id: int):
+    trip = await trip_svc.get_trip(db, trip_id)
+    if not trip:
         raise HTTPException(status_code=404, detail="旅遊計畫不存在")
-    return detail
+    return trip
 
 
-@router.put("/{trip_id}", response_model=TripSummary)
-async def update_trip_info(
-    trip_id: int,
-    req: CreateTripRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Update trip basic info (owner only)."""
-    if not is_owner(trip_id, user_id):
-        raise HTTPException(status_code=403, detail="只有發起人可以修改計畫資訊")
-    result = update_trip(
-        trip_id,
-        name=req.name,
-        destination=req.destination,
-        start_date=req.start_date,
-        end_date=req.end_date,
-        budget=req.budget,
-    )
-    if not result:
-        raise HTTPException(status_code=404)
-    return result
+# ─── Trip CRUD ───────────────────────────────────────
+
+@router.post("", status_code=201)
+async def create_new_trip(req: CreateTripRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.create_trip(db, req.name, req.destination, req.start_date, req.end_date, req.budget, req.currency, user_id)
+    return _trip_to_summary(trip)
+
+
+@router.get("")
+async def list_my_trips(user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trips = await trip_svc.list_user_trips(db, user_id)
+    return [_trip_to_summary(t) for t in trips]
+
+
+@router.get("/{trip_id}")
+async def get_trip_details(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_member(trip, user_id):
+        raise HTTPException(status_code=403, detail="你不是這個旅遊計畫的成員")
+    return _trip_to_detail(trip)
+
+
+@router.put("/{trip_id}")
+async def update_trip_info(trip_id: int, req: CreateTripRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_owner(trip, user_id):
+        raise HTTPException(status_code=403, detail="只有發起人可以修改")
+    updated = await trip_svc.update_trip(db, trip_id, name=req.name, destination=req.destination, start_date=req.start_date, end_date=req.end_date, budget=req.budget)
+    return _trip_to_summary(updated)
 
 
 @router.delete("/{trip_id}", status_code=204)
-async def remove_trip(trip_id: int, user_id: int = Depends(get_current_user_id)):
-    """Delete a trip (owner only)."""
-    if not is_owner(trip_id, user_id):
-        raise HTTPException(status_code=403, detail="只有發起人可以刪除計畫")
-    if not delete_trip(trip_id):
-        raise HTTPException(status_code=404)
+async def remove_trip(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_owner(trip, user_id):
+        raise HTTPException(status_code=403, detail="只有發起人可以刪除")
+    await trip_svc.delete_trip(db, trip_id)
 
 
-# --- Itinerary items ---
+# ─── Items ───────────────────────────────────────────
 
-@router.post("/{trip_id}/items", response_model=ItineraryItem, status_code=201)
-async def create_item(
-    trip_id: int,
-    req: CreateItemRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Add an itinerary item to a trip."""
-    if not can_edit(trip_id, user_id):
+@router.post("/{trip_id}/items", status_code=201)
+async def create_item(trip_id: int, req: CreateItemRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.can_edit(trip, user_id):
         raise HTTPException(status_code=403, detail="你沒有編輯權限")
-    item = add_item(trip_id, req, user_id)
+    item = await trip_svc.add_item(db, trip_id, req.day_number, req.type, req.name, req.time, req.location, req.note, req.estimated_cost, user_id)
+    return _item_to_dict(item)
+
+
+@router.put("/{trip_id}/items/{item_id}")
+async def modify_item(trip_id: int, item_id: int, req: CreateItemRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.can_edit(trip, user_id):
+        raise HTTPException(status_code=403, detail="你沒有編輯權限")
+    item = await trip_svc.update_item(db, item_id, day_number=req.day_number, type=req.type, name=req.name, time=req.time, location=req.location, note=req.note, estimated_cost=req.estimated_cost)
     if not item:
-        raise HTTPException(status_code=404, detail="旅遊計畫不存在")
-    return item
-
-
-@router.put("/{trip_id}/items/{item_id}", response_model=ItineraryItem)
-async def modify_item(
-    trip_id: int,
-    item_id: int,
-    req: CreateItemRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Update an itinerary item."""
-    if not can_edit(trip_id, user_id):
-        raise HTTPException(status_code=403, detail="你沒有編輯權限")
-    result = update_item(item_id, **req.model_dump())
-    if not result:
         raise HTTPException(status_code=404)
-    return result
+    return _item_to_dict(item)
 
 
 @router.delete("/{trip_id}/items/{item_id}", status_code=204)
-async def remove_item(
-    trip_id: int,
-    item_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Delete an itinerary item."""
-    if not can_edit(trip_id, user_id):
+async def remove_item(trip_id: int, item_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.can_edit(trip, user_id):
         raise HTTPException(status_code=403, detail="你沒有編輯權限")
-    if not delete_item(item_id):
-        raise HTTPException(status_code=404)
+    await trip_svc.delete_item(db, item_id)
 
 
 @router.put("/{trip_id}/items/reorder")
-async def reorder_trip_items(
-    trip_id: int,
-    req: ReorderRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Reorder itinerary items for a specific day."""
-    if not can_edit(trip_id, user_id):
+async def reorder_trip_items(trip_id: int, req: ReorderRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.can_edit(trip, user_id):
         raise HTTPException(status_code=403, detail="你沒有編輯權限")
-    reorder_items(trip_id, 0, req.item_ids)
+    await trip_svc.reorder_items(db, trip_id, req.item_ids)
     return {"message": "排序已更新"}
 
 
-# --- Invite / Join ---
+# ─── Invite / Join ───────────────────────────────────
 
-@router.post("/{trip_id}/invite", response_model=InviteResponse)
-async def generate_invite(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Generate an invite link for the trip."""
-    if not is_member(trip_id, user_id):
+@router.post("/{trip_id}/invite")
+async def generate_invite(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
-    trip = get_trip(trip_id)
-    if not trip:
-        raise HTTPException(status_code=404)
-    return InviteResponse(
-        invite_link=f"/api/trips/join/{trip['share_token']}",
-        share_token=trip["share_token"],
-    )
+    return InviteResponse(invite_link=f"/api/trips/join/{trip.share_token}", share_token=trip.share_token)
 
 
-@router.post("/join/{token}", response_model=TripSummary)
-async def join_via_token(
-    token: str,
-    user_id: int | None = Depends(get_optional_user_id),
-):
-    """Join a trip via invite token."""
-    trip = get_trip_by_token(token)
+@router.post("/join/{token}")
+async def join_via_token(token: str, user_id: int | None = Depends(get_optional_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.get_trip_by_token(db, token)
     if not trip:
         raise HTTPException(status_code=404, detail="邀請連結無效或已過期")
     if user_id:
-        join_trip(trip["id"], user_id)
-    from app.trips.service import _to_summary
-    return _to_summary(trip)
+        await trip_svc.join_trip(db, trip.id, user_id)
+        await db.refresh(trip, ["members"])
+    return _trip_to_summary(trip)
 
 
-@router.put("/{trip_id}/members/{target_user_id}", response_model=dict)
-async def change_member_role(
-    trip_id: int,
-    target_user_id: int,
-    req: SetRoleRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Set a member's role (owner only)."""
-    if not is_owner(trip_id, user_id):
+@router.put("/{trip_id}/members/{target_user_id}")
+async def change_member_role(trip_id: int, target_user_id: int, req: SetRoleRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_owner(trip, user_id):
         raise HTTPException(status_code=403, detail="只有發起人可以變更權限")
-    if not set_member_role(trip_id, target_user_id, req.role):
+    if not await trip_svc.set_member_role(db, trip_id, target_user_id, req.role):
         raise HTTPException(status_code=404)
     return {"message": "權限已更新"}
 
 
-# --- Comments (Task 3.2) ---
+# ─── Comments (Task 3.2) ────────────────────────────
 
 @router.post("/{trip_id}/items/{item_id}/comments", status_code=201)
-async def create_comment(
-    trip_id: int,
-    item_id: int,
-    req: CommentCreate,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Add a comment to an itinerary item."""
-    if not is_member(trip_id, user_id):
+async def create_comment(trip_id: int, item_id: int, req: CommentCreate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
     comment = comments_mod.add_comment(item_id, user_id, req.text)
     comments_mod.record_edit(trip_id, user_id, "add_comment", f"留言於項目 {item_id}", item_id)
@@ -226,82 +179,55 @@ async def create_comment(
 
 
 @router.get("/{trip_id}/items/{item_id}/comments")
-async def list_comments(
-    trip_id: int,
-    item_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """List comments for an itinerary item."""
-    if not is_member(trip_id, user_id):
+async def list_comments(trip_id: int, item_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
     return comments_mod.get_comments(item_id)
 
 
-# --- Edit history (Task 3.3) ---
+# ─── Edit history (Task 3.3) ────────────────────────
 
 @router.get("/{trip_id}/history")
-async def get_history(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Get edit history for a trip."""
-    if not is_member(trip_id, user_id):
+async def get_history(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
     return comments_mod.get_edit_history(trip_id)
 
 
-# --- Finalize (Task 3.4) ---
+# ─── Finalize (Task 3.4) ────────────────────────────
 
 @router.post("/{trip_id}/finalize")
-async def initiate_finalize(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Initiate finalization — only owner can start, all members must confirm."""
-    if not is_owner(trip_id, user_id):
+async def initiate_finalize(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_owner(trip, user_id):
         raise HTTPException(status_code=403, detail="只有發起人可以發起定案")
-    trip = get_trip(trip_id)
-    if not trip:
-        raise HTTPException(status_code=404)
-    if trip["status"] == "finalized":
+    if trip.status == "finalized":
         raise HTTPException(status_code=400, detail="已經定案了")
-    # Owner auto-confirms
-    confirm_member(trip_id, user_id)
+    status = await trip_svc.confirm_member(db, trip_id, user_id)
     comments_mod.record_edit(trip_id, user_id, "finalize", "發起定案，等待所有成員確認")
-    pending = [uid for uid, m in trip["members"].items() if not m["confirmed"]]
-    return {
-        "message": "已發起定案，等待成員確認",
-        "pending_count": len(pending),
-        "status": trip["status"],
-    }
+    trip = await trip_svc.get_trip(db, trip_id)
+    pending = [m for m in trip.members if not m.confirmed]
+    return {"message": "已發起定案", "pending_count": len(pending), "status": trip.status}
 
 
 @router.post("/{trip_id}/confirm")
-async def confirm_trip(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Confirm finalization of the trip (each member must confirm)."""
-    if not is_member(trip_id, user_id):
+async def confirm_trip(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
-    confirm_member(trip_id, user_id)
-    trip = get_trip(trip_id)
-    status = trip["status"] if trip else "unknown"
-    if status == "finalized":
+    new_status = await trip_svc.confirm_member(db, trip_id, user_id)
+    if new_status == "finalized":
         comments_mod.record_edit(trip_id, user_id, "finalize", "全員確認，行程已定案")
-    return {"message": "已確認", "status": status}
+    return {"message": "已確認", "status": new_status}
 
 
 @router.post("/{trip_id}/unlock")
-async def unlock_trip(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Unlock a finalized trip for editing (owner only)."""
-    if not is_owner(trip_id, user_id):
+async def unlock_trip(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.is_owner(trip, user_id):
         raise HTTPException(status_code=403, detail="只有發起人可以解鎖")
-    from app.trips.service import unlock_trip as do_unlock
-    if not do_unlock(trip_id):
-        raise HTTPException(status_code=404)
-    comments_mod.record_edit(trip_id, user_id, "unlock", "解鎖行程，重新開放編輯")
+    await trip_svc.unlock_trip(db, trip_id)
+    comments_mod.record_edit(trip_id, user_id, "unlock", "解鎖行程")
     return {"message": "行程已解鎖", "status": "planning"}

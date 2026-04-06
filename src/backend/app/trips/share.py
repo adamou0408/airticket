@@ -1,42 +1,36 @@
-"""Share and export service.
+"""Share and export service — database-backed."""
 
-Spec: specs/travel-planner-app/spec.md — US-8, US-11
-Task: 5.1 — Trip export (text/JSON format for MVP; image/PDF in frontend)
-Task: 5.2 — Read-only share link
-Task: 5.3 — Settlement result sharing
-"""
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.expenses.service import calculate_settlement, list_expenses
-from app.trips.service import get_trip, get_trip_by_token, get_trip_detail
+from app.expenses import service as exp_svc
+from app.trips import service as trip_svc
 
 
-def export_trip_text(trip_id: int) -> str | None:
-    """Export trip as formatted plain text (for sharing via messaging apps)."""
-    detail = get_trip_detail(trip_id)
-    if not detail:
+async def export_trip_text(db: AsyncSession, trip_id: int) -> str | None:
+    trip = await trip_svc.get_trip(db, trip_id)
+    if not trip:
         return None
 
     lines = []
-    lines.append(f"✈️ {detail.name}")
-    lines.append(f"📍 目的地：{detail.destination}")
-    lines.append(f"📅 {detail.start_date} ~ {detail.end_date}")
-    if detail.budget:
-        lines.append(f"💰 預算：{detail.currency} {detail.budget:,.0f}")
-    lines.append(f"👥 成員：{len(detail.members)} 人")
-    lines.append(f"📋 狀態：{detail.status}")
+    lines.append(f"✈️ {trip.name}")
+    lines.append(f"📍 目的地：{trip.destination}")
+    lines.append(f"📅 {trip.start_date} ~ {trip.end_date}")
+    if trip.budget:
+        lines.append(f"💰 預算：{trip.currency} {trip.budget:,.0f}")
+    lines.append(f"👥 成員：{len(trip.members)} 人")
+    lines.append(f"📋 狀態：{trip.status}")
     lines.append("")
 
-    # Group items by day
     days: dict[int, list] = {}
-    for item in detail.items:
+    for item in trip.items:
         days.setdefault(item.day_number, []).append(item)
 
     for day_num in sorted(days.keys()):
         lines.append(f"--- Day {day_num} ---")
-        for item in days[day_num]:
+        for item in sorted(days[day_num], key=lambda x: x.order):
             time_str = f" {item.time}" if item.time else ""
             cost_str = f" (${item.estimated_cost:,.0f})" if item.estimated_cost else ""
-            lines.append(f"  {item.type.value}{time_str} | {item.name}{cost_str}")
+            lines.append(f"  {item.type}{time_str} | {item.name}{cost_str}")
             if item.location:
                 lines.append(f"    📍 {item.location}")
             if item.note:
@@ -46,52 +40,55 @@ def export_trip_text(trip_id: int) -> str | None:
     return "\n".join(lines)
 
 
-def export_trip_json(trip_id: int) -> dict | None:
-    """Export trip as structured JSON (for frontend rendering/PDF generation)."""
-    detail = get_trip_detail(trip_id)
-    if not detail:
-        return None
-    return detail.model_dump(mode="json")
-
-
-def get_shared_trip(share_token: str) -> dict | None:
-    """Get trip data via share token (read-only, no auth required)."""
-    trip = get_trip_by_token(share_token)
+async def export_trip_json(db: AsyncSession, trip_id: int) -> dict | None:
+    trip = await trip_svc.get_trip(db, trip_id)
     if not trip:
         return None
-    detail = get_trip_detail(trip["id"])
-    if not detail:
+    # Build a dict manually since we're using ORM models now
+    return {
+        "id": trip.id, "name": trip.name, "destination": trip.destination,
+        "start_date": trip.start_date, "end_date": trip.end_date,
+        "budget": trip.budget, "currency": trip.currency,
+        "status": trip.status, "owner_id": trip.owner_id,
+        "members": [{"user_id": m.user_id, "role": m.role, "confirmed": m.confirmed} for m in trip.members],
+        "items": sorted([{
+            "id": i.id, "day_number": i.day_number, "order": i.order,
+            "type": i.type, "name": i.name, "time": i.time,
+            "location": i.location, "note": i.note,
+            "estimated_cost": i.estimated_cost,
+        } for i in trip.items], key=lambda x: (x["day_number"], x["order"])),
+    }
+
+
+async def get_shared_trip(db: AsyncSession, share_token: str) -> dict | None:
+    trip = await trip_svc.get_trip_by_token(db, share_token)
+    if not trip:
         return None
-    # Return sanitized data (no internal IDs exposed beyond what's needed)
-    return detail.model_dump(mode="json")
+    return await export_trip_json(db, trip.id)
 
 
-def export_settlement_text(trip_id: int) -> str | None:
-    """Export settlement result as formatted text."""
-    trip = get_trip(trip_id)
+async def export_settlement_text(db: AsyncSession, trip_id: int) -> str | None:
+    trip = await trip_svc.get_trip(db, trip_id)
     if not trip:
         return None
 
-    currency = trip.get("currency", "TWD")
-    report = calculate_settlement(trip_id, currency)
-    expenses = list_expenses(trip_id)
+    currency = trip.currency
+    report = await exp_svc.calculate_settlement(db, trip_id, currency)
+    expenses = await exp_svc.list_expenses(db, trip_id)
     total = sum(e.amount for e in expenses)
 
     lines = []
-    lines.append(f"💰 旅遊拆帳結算 — {trip['name']}")
+    lines.append(f"💰 旅遊拆帳結算 — {trip.name}")
     lines.append(f"總花費：{currency} {total:,.0f}")
     lines.append(f"筆數：{len(expenses)} 筆")
     lines.append("")
 
-    if not report.entries:
+    if not report["entries"]:
         lines.append("✅ 大家都結清了，不需要轉帳！")
     else:
         lines.append("📋 轉帳清單：")
-        for entry in report.entries:
-            status = "✅ 已結清" if entry.settled else "⏳ 待轉帳"
-            lines.append(
-                f"  用戶 {entry.from_user} → 用戶 {entry.to_user}："
-                f"{currency} {entry.amount:,.0f} {status}"
-            )
+        for entry in report["entries"]:
+            status = "✅ 已結清" if entry["settled"] else "⏳ 待轉帳"
+            lines.append(f"  用戶 {entry['from_user']} → 用戶 {entry['to_user']}：{currency} {entry['amount']:,.0f} {status}")
 
     return "\n".join(lines)

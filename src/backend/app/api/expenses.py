@@ -1,104 +1,74 @@
-"""Expense API endpoints.
+"""Expense API endpoints — database-backed."""
 
-Spec: specs/travel-planner-app/spec.md — US-9, US-10, US-11
-Task: 4.2 — Quick expense API
-Task: 4.3 — Budget estimation API
-Task: 4.4 — Settlement API
-"""
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user_id
-from app.expenses.models import (
-    BudgetSummary,
-    CreateExpenseRequest,
-    Expense,
-    SettlementReport,
-)
-from app.expenses.service import (
-    add_expense,
-    calculate_settlement,
-    get_budget_summary,
-    list_expenses,
-    mark_settled,
-)
-from app.trips.service import get_trip, is_member
+from app.core.database import get_db
+from app.expenses.models import CreateExpenseRequest
+from app.expenses import service as exp_svc
+from app.trips import service as trip_svc
 
 router = APIRouter(prefix="/trips/{trip_id}/expenses", tags=["expenses"])
 
 
-def _get_trip_or_404(trip_id: int):
-    trip = get_trip(trip_id)
+def _expense_to_dict(e):
+    return {
+        "id": e.id, "trip_id": e.trip_id, "amount": e.amount,
+        "currency": e.currency, "category": e.category,
+        "payer_id": e.payer_id, "note": e.note,
+        "receipt_url": e.receipt_url, "split_method": e.split_method,
+        "split_among": json.loads(e.split_among) if e.split_among else [],
+        "created_at": e.created_at.isoformat() if e.created_at else "",
+    }
+
+
+@router.post("", status_code=201)
+async def create_expense(trip_id: int, req: CreateExpenseRequest,
+                         user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.get_trip(db, trip_id)
     if not trip:
         raise HTTPException(status_code=404, detail="旅遊計畫不存在")
-    return trip
-
-
-@router.post("", response_model=Expense, status_code=201)
-async def create_expense(
-    trip_id: int,
-    req: CreateExpenseRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Quick expense recording — only amount + payer required."""
-    trip = _get_trip_or_404(trip_id)
-    if not is_member(trip_id, user_id):
+    if not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403, detail="你不是這個計畫的成員")
-    all_members = list(trip["members"].keys())
-    return add_expense(trip_id, req, all_members)
+    all_members = [m.user_id for m in trip.members]
+    split_among = req.split_among if req.split_among else all_members
+    expense = await exp_svc.add_expense(db, trip_id, req.amount, req.payer_id, req.currency, req.category, req.note, req.split_method, split_among)
+    return _expense_to_dict(expense)
 
 
-@router.get("", response_model=list[Expense])
-async def get_expenses(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """List all expenses for a trip."""
-    if not is_member(trip_id, user_id):
+@router.get("")
+async def get_expenses(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.get_trip(db, trip_id)
+    if not trip or not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
-    return list_expenses(trip_id)
+    expenses = await exp_svc.list_expenses(db, trip_id)
+    return [_expense_to_dict(e) for e in expenses]
 
 
-@router.get("/budget", response_model=BudgetSummary)
-async def get_budget(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Get budget summary — estimated vs actual, by category."""
-    trip = _get_trip_or_404(trip_id)
-    if not is_member(trip_id, user_id):
+@router.get("/budget")
+async def get_budget(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.get_trip(db, trip_id)
+    if not trip or not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
-
-    # Calculate estimated cost from itinerary items
-    from app.trips.service import _items
-    estimated = sum(
-        i["estimated_cost"] for i in _items.values() if i["trip_id"] == trip_id
-    )
-
-    return get_budget_summary(trip_id, trip.get("budget"), estimated, trip.get("currency", "TWD"))
+    return await exp_svc.get_budget_summary(db, trip_id, trip.budget, trip.currency)
 
 
-@router.get("/settlement", response_model=SettlementReport)
-async def get_settlement(
-    trip_id: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Calculate settlement — who owes whom, minimized transfers."""
-    trip = _get_trip_or_404(trip_id)
-    if not is_member(trip_id, user_id):
+@router.get("/settlement")
+async def get_settlement(trip_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.get_trip(db, trip_id)
+    if not trip or not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
-    return calculate_settlement(trip_id, trip.get("currency", "TWD"))
+    return await exp_svc.calculate_settlement(db, trip_id, trip.currency)
 
 
 @router.put("/settlement/settle")
-async def settle_payment(
-    trip_id: int,
-    from_user: int,
-    to_user: int,
-    user_id: int = Depends(get_current_user_id),
-):
-    """Mark a settlement entry as paid."""
-    if not is_member(trip_id, user_id):
+async def settle_payment(trip_id: int, from_user: int, to_user: int,
+                         user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    trip = await trip_svc.get_trip(db, trip_id)
+    if not trip or not trip_svc.is_member(trip, user_id):
         raise HTTPException(status_code=403)
-    mark_settled(trip_id, from_user, to_user)
+    await exp_svc.mark_settled(db, trip_id, from_user, to_user)
     return {"message": "已標記為已結清"}

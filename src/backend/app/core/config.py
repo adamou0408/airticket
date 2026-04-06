@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     app_name: str = "AirTicket Travel Planner"
     debug: bool = False
 
-    # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/airticket"
+    # Database — defaults to SQLite for local dev
+    database_url: str = "sqlite+aiosqlite:///./airticket.db"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

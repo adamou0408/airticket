@@ -14,9 +14,9 @@ from app.core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    from app.core.database import create_tables
+    await create_tables()
     yield
-    # Shutdown
 
 
 app = FastAPI(
