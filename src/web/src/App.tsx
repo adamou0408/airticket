@@ -159,8 +159,7 @@ export default function App() {
     // Try real API, fallback to mock
     let data: SearchResult
     try {
-      const API = import.meta.env.VITE_API_URL
-      if (!API) throw new Error('no api')
+      const API = import.meta.env.VITE_API_URL || 'https://airticket-api.onrender.com/api'
       const res = await fetch(`${API}/tickets/search`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ origin, destination: dest, departure_date: dep, return_date: ret, passengers: +pax, sort_by: sort === 'price' ? 'price' : 'transit_time' }),
