@@ -33,5 +33,11 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Render.com provides postgresql:// but asyncpg needs postgresql+asyncpg://
+        if self.database_url.startswith("postgresql://"):
+            self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 
 settings = Settings()

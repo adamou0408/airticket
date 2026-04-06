@@ -1,0 +1,26 @@
+# Render.com Blueprint — auto-deploys backend + PostgreSQL
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: airticket-api
+    runtime: python
+    plan: free
+    rootDir: src/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: airticket-db
+          property: connectionURI
+      - key: PYTHON_VERSION
+        value: "3.12"
+    healthCheckPath: /health
+    autoDeploy: true
+
+databases:
+  - name: airticket-db
+    plan: free
+    databaseName: airticket
+    postgresMajorVersion: "16"
