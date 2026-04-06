@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-// Types (previously from mock.ts — now API-only, US-17)
+import TripsTab from './TripsTab'
+import ExpensesTab from './ExpensesTab'
+
+// Types (API-only, US-17)
 interface FlightLeg { origin: string; destination: string; airline: string; flight_number: string; departure_time: string; arrival_time: string; departure_date: string; arrival_date: string; flight_duration_minutes: number; price: number; next_day: boolean }
 interface LayoverInfo { city: string; duration_minutes: number; duration_display: string }
 interface OutstationTicket { outstation_city: string; outstation_city_name: string; legs: FlightLeg[]; layovers: LayoverInfo[]; total_price: number; direct_price: number | null; savings: number | null; savings_percent: number | null; total_transit_time_minutes: number; total_journey_hours: number; outbound_hours: number; return_hours: number; currency: string }
@@ -179,7 +182,7 @@ function loadHistory(): HistoryItem[] {
 function saveHistory(h: HistoryItem[]) { localStorage.setItem('search_history', JSON.stringify(h)) }
 
 // ─── App ────────────────────────────────────────────
-type Tab = 'search' | 'history' | 'tracking'
+type Tab = 'search' | 'history' | 'tracking' | 'trips' | 'expenses'
 
 interface TrackingItem { id: number; origin: string; destination: string; enabled: boolean; last_crawled_at: string | null; last_result_count: number }
 
@@ -206,6 +209,8 @@ export default function App() {
   const [returnFlights, setReturnFlights] = useState<FlightItem[]>([])
   const [showExplain, setShowExplain] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
+
+  const [authToken] = useState<string | null>(() => localStorage.getItem('auth_token'))
 
   const { search: searchAirport, loaded: airportsLoaded } = useAirportSearch()
 
@@ -418,7 +423,9 @@ export default function App() {
         <div className="tabs">
           <button className={`tab ${tab === 'search' ? 'active' : ''}`} onClick={() => setTab('search')}>🔍 搜機票</button>
           <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>📋 紀錄 {history.length > 0 && `(${history.length})`}</button>
-          <button className={`tab ${tab === 'tracking' ? 'active' : ''}`} onClick={() => setTab('tracking')}>📌 追蹤 {trackingList.length > 0 && `(${trackingList.length})`}</button>
+          <button className={`tab ${tab === 'tracking' ? 'active' : ''}`} onClick={() => setTab('tracking')}>📌 追蹤</button>
+          <button className={`tab ${tab === 'trips' ? 'active' : ''}`} onClick={() => setTab('trips')}>🗺️ 行程</button>
+          <button className={`tab ${tab === 'expenses' ? 'active' : ''}`} onClick={() => setTab('expenses')}>💰 記帳</button>
         </div>
 
         <div className="content">
@@ -714,6 +721,9 @@ export default function App() {
               </div>
             </>
           )}
+
+          {tab === 'trips' && <TripsTab token={authToken} />}
+          {tab === 'expenses' && <ExpensesTab token={authToken} tripId={null} />}
         </div>
 
         {showExplain && (
