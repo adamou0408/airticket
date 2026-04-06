@@ -211,6 +211,28 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory)
 
   const [authToken] = useState<string | null>(() => localStorage.getItem('auth_token'))
+  const [userTrips, setUserTrips] = useState<{id:number,name:string}[]>([])
+  const [addedMsg, setAddedMsg] = useState('')
+
+  // Load user trips for "add to trip" feature
+  useEffect(() => {
+    if (authToken) {
+      fetch(`${API}/trips`, { headers: { 'Authorization': `Bearer ${authToken}` }})
+        .then(r => r.json()).then(d => setUserTrips(d || [])).catch(() => {})
+    }
+  }, [authToken])
+
+  const addFlightToTrip = async (tripId: number, tripName: string, flight: FlightItem) => {
+    if (!authToken) { alert('請先登入'); return }
+    try {
+      await fetch(`${API}/trips/${tripId}/items/from-flight`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ airline: flight.airline, flight_number: flight.flight_number, origin: flight.origin, destination: flight.destination, departure_time: flight.departure_time, price: flight.price }]),
+      })
+      setAddedMsg(`已加入「${tripName}」`); setTimeout(() => setAddedMsg(''), 3000)
+    } catch { alert('加入失敗') }
+  }
 
   const { search: searchAirport, loaded: airportsLoaded } = useAirportSearch()
 
@@ -517,6 +539,11 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Added to trip notification */}
+              {addedMsg && (
+                <div style={{background:'#D1FAE5',color:'#065F46',padding:'10px 14px',borderRadius:10,marginBottom:12,fontWeight:600,fontSize:14,textAlign:'center'}}>✅ {addedMsg}</div>
+              )}
+
               {/* Error message (US-17) */}
               {error && (
                 <div className="card" style={{borderColor:'#EF4444', background:'#FEF2F2', textAlign:'center'}}>
@@ -559,6 +586,14 @@ export default function App() {
                           {f.source === 'simulated' ? '⚠️ 模擬' : `✅ ${f.source}`}
                         </span>
                       </div>
+                      {userTrips.length > 0 && (
+                        <div style={{marginTop:6}}>
+                          <select onChange={e => { if (e.target.value) { const t = userTrips.find(tr => tr.id === +e.target.value); if (t) addFlightToTrip(t.id, t.name, f); e.target.value = '' } }} style={{fontSize:12,padding:'4px 8px',borderRadius:6,border:'1px solid #E5E7EB',color:'#FF6B35',cursor:'pointer'}}>
+                            <option value="">＋ 加入行程</option>
+                            {userTrips.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {returnFlights.length > 0 && (
@@ -701,16 +736,24 @@ export default function App() {
                 trackingList.map(t => (
                   <div className="history-item" key={t.id}>
                     <div className="history-content">
-                      <div className="history-route">{t.origin} → {t.destination}</div>
+                      <div className="history-route">
+                        {(t as any).alert_triggered && <span style={{marginRight:4}}>🔔</span>}
+                        {t.origin} → {t.destination}
+                      </div>
                       <div className="history-detail">
                         {t.last_crawled_at
                           ? `上次爬取：${new Date(t.last_crawled_at).toLocaleString('zh-TW')} · ${t.last_result_count} 筆`
                           : '尚未爬取'}
                       </div>
+                      {(t as any).lowest_price && (
+                        <div style={{fontSize:12,color:'#FF6B35',fontWeight:600}}>最低 ${(t as any).lowest_price?.toLocaleString()}</div>
+                      )}
                     </div>
-                    <span style={{fontSize:12, color: t.enabled ? '#10B981' : '#9CA3AF', fontWeight:600, padding:'0 8px'}}>
-                      {t.enabled ? '啟用' : '暫停'}
-                    </span>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
+                      <span style={{fontSize:11, color: t.enabled ? '#10B981' : '#9CA3AF', fontWeight:600}}>
+                        {t.enabled ? '啟用' : '暫停'}
+                      </span>
+                    </div>
                     <button className="del-btn" onClick={() => removeTracking(t.id)}>✕</button>
                   </div>
                 ))

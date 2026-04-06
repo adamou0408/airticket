@@ -57,6 +57,21 @@ async def list_user_schedules(db: AsyncSession, user_id: int) -> list[CrawlSched
     return list(result.scalars().all())
 
 
+async def set_target_price(db: AsyncSession, schedule_id: int, user_id: int, target_price: float) -> CrawlSchedule | None:
+    """Set target price for price alert (US-21)."""
+    result = await db.execute(
+        select(CrawlSchedule).where(CrawlSchedule.id == schedule_id, CrawlSchedule.user_id == user_id)
+    )
+    schedule = result.scalar_one_or_none()
+    if not schedule:
+        return None
+    schedule.target_price = target_price
+    schedule.alert_triggered = False  # Reset alert when target changes
+    await db.commit()
+    await db.refresh(schedule)
+    return schedule
+
+
 async def delete_schedule(db: AsyncSession, schedule_id: int, user_id: int) -> bool:
     result = await db.execute(
         select(CrawlSchedule).where(CrawlSchedule.id == schedule_id, CrawlSchedule.user_id == user_id)

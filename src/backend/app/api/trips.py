@@ -98,6 +98,23 @@ async def remove_trip(trip_id: int, user_id: int = Depends(get_current_user_id),
 
 # ─── Items ───────────────────────────────────────────
 
+@router.post("/{trip_id}/items/from-flight", status_code=201)
+async def add_from_flight(trip_id: int, flights: list[dict], user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    """Add flight(s) as itinerary items — one-click from search results (US-20)."""
+    trip = await _get_trip_or_404(db, trip_id)
+    if not trip_svc.can_edit(trip, user_id):
+        raise HTTPException(status_code=403, detail="你沒有編輯權限")
+    items = []
+    for f in flights:
+        name = f"{f.get('airline','')} {f.get('flight_number','')}".strip()
+        time = f.get('departure_time', '')
+        cost = f.get('price', 0)
+        day = 1  # Default to day 1
+        item = await trip_svc.add_item(db, trip_id, day, 'transport', name, time, f"{f.get('origin','')}-{f.get('destination','')}", '', cost, user_id)
+        items.append(_item_to_dict(item))
+    return items
+
+
 @router.post("/{trip_id}/items", status_code=201)
 async def create_item(trip_id: int, req: CreateItemRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     trip = await _get_trip_or_404(db, trip_id)

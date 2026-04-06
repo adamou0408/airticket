@@ -166,4 +166,18 @@ class CrawlSchedule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_result_count: Mapped[int] = mapped_column(Integer, default=0)
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    alert_triggered: Mapped[bool] = mapped_column(Boolean, default=False)
+    lowest_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PriceHistory(Base):
+    __tablename__ = "price_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    origin: Mapped[str] = mapped_column(String(10), nullable=False)
+    destination: Mapped[str] = mapped_column(String(10), nullable=False)
+    lowest_price: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="")
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

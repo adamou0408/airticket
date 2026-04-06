@@ -21,6 +21,10 @@ class CreateScheduleRequest(BaseModel):
     destination: str = Field(..., min_length=3, max_length=4)
 
 
+class SetTargetPriceRequest(BaseModel):
+    target_price: float = Field(..., gt=0)
+
+
 class ScheduleResponse(BaseModel):
     id: int
     origin: str
@@ -28,6 +32,9 @@ class ScheduleResponse(BaseModel):
     enabled: bool
     last_crawled_at: str | None
     last_result_count: int
+    target_price: float | None
+    alert_triggered: bool
+    lowest_price: float | None
     created_at: str
 
     @classmethod
@@ -37,6 +44,9 @@ class ScheduleResponse(BaseModel):
             enabled=s.enabled,
             last_crawled_at=s.last_crawled_at.isoformat() if s.last_crawled_at else None,
             last_result_count=s.last_result_count,
+            target_price=getattr(s, 'target_price', None),
+            alert_triggered=getattr(s, 'alert_triggered', False),
+            lowest_price=getattr(s, 'lowest_price', None),
             created_at=s.created_at.isoformat() if s.created_at else "",
         )
 
@@ -96,6 +106,20 @@ async def manual_crawl(
     travel_date = date.today() + timedelta(days=14)
     result = await sched_svc.run_crawl_for_route(req.origin.upper(), req.destination.upper(), travel_date)
     return result
+
+
+@router.put("/{schedule_id}/target")
+async def set_target_price(
+    schedule_id: int,
+    req: SetTargetPriceRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set target price for a tracked route (US-21)."""
+    s = await sched_svc.set_target_price(db, schedule_id, user_id, req.target_price)
+    if not s:
+        raise HTTPException(status_code=404)
+    return ScheduleResponse.from_model(s)
 
 
 @router.get("/default-routes")
