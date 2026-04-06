@@ -152,3 +152,18 @@ class Settlement(Base):
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String(10), default="TWD")
     settled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# ─── Crawl Schedules ────────────────────────────────
+
+class CrawlSchedule(Base):
+    __tablename__ = "crawl_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    origin: Mapped[str] = mapped_column(String(10), nullable=False)
+    destination: Mapped[str] = mapped_column(String(10), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_result_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

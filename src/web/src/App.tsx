@@ -170,7 +170,9 @@ function loadHistory(): HistoryItem[] {
 function saveHistory(h: HistoryItem[]) { localStorage.setItem('search_history', JSON.stringify(h)) }
 
 // ─── App ────────────────────────────────────────────
-type Tab = 'search' | 'history'
+type Tab = 'search' | 'history' | 'tracking'
+
+interface TrackingItem { id: number; origin: string; destination: string; enabled: boolean; last_crawled_at: string | null; last_result_count: number }
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('search')
@@ -279,6 +281,60 @@ export default function App() {
     setTab('search')
   }
 
+  // ─── Tracking (D.3) ───────────────
+  const [trackingList, setTrackingList] = useState<TrackingItem[]>([])
+  const [trackOrigin, setTrackOrigin] = useState('')
+  const [trackDest, setTrackDest] = useState('')
+
+  const loadTracking = async () => {
+    try {
+      // For demo: use localStorage since we might not have auth token
+      const saved = localStorage.getItem('tracking_routes')
+      if (saved) setTrackingList(JSON.parse(saved))
+    } catch {}
+  }
+  useEffect(() => { loadTracking() }, [])
+
+  const addTracking = () => {
+    if (!trackOrigin || !trackDest) return
+    const item: TrackingItem = {
+      id: Date.now(), origin: trackOrigin.toUpperCase(), destination: trackDest.toUpperCase(),
+      enabled: true, last_crawled_at: null, last_result_count: 0,
+    }
+    const updated = [item, ...trackingList.filter(t => !(t.origin === item.origin && t.destination === item.destination))]
+    setTrackingList(updated)
+    localStorage.setItem('tracking_routes', JSON.stringify(updated))
+    setTrackOrigin(''); setTrackDest('')
+
+    // Also try to save to backend
+    fetch(`${API}/crawl-schedules`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin: item.origin, destination: item.destination }),
+    }).catch(() => {})
+  }
+
+  const removeTracking = (id: number) => {
+    const updated = trackingList.filter(t => t.id !== id)
+    setTrackingList(updated)
+    localStorage.setItem('tracking_routes', JSON.stringify(updated))
+  }
+
+  const addCurrentToTracking = () => {
+    if (!origin || !dest) return
+    setTrackOrigin(origin); setTrackDest(dest)
+    const item: TrackingItem = {
+      id: Date.now(), origin, destination: dest,
+      enabled: true, last_crawled_at: null, last_result_count: 0,
+    }
+    const updated = [item, ...trackingList.filter(t => !(t.origin === item.origin && t.destination === item.destination))]
+    setTrackingList(updated)
+    localStorage.setItem('tracking_routes', JSON.stringify(updated))
+    fetch(`${API}/crawl-schedules`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin, destination: dest }),
+    }).catch(() => {})
+  }
+
   // ─── Timeline rendering helpers ───────────────
   const renderLeg = (leg: FlightLeg, dotType: 'out' | 'main', hasStem: boolean) => (
     <div className="tl-leg">
@@ -317,7 +373,8 @@ export default function App() {
 
         <div className="tabs">
           <button className={`tab ${tab === 'search' ? 'active' : ''}`} onClick={() => setTab('search')}>🔍 搜機票</button>
-          <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>📋 搜尋紀錄 {history.length > 0 && `(${history.length})`}</button>
+          <button className={`tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>📋 紀錄 {history.length > 0 && `(${history.length})`}</button>
+          <button className={`tab ${tab === 'tracking' ? 'active' : ''}`} onClick={() => setTab('tracking')}>📌 追蹤 {trackingList.length > 0 && `(${trackingList.length})`}</button>
         </div>
 
         <div className="content">
@@ -511,6 +568,13 @@ export default function App() {
                   ))}
                 </>
               )}
+
+              {/* Add to tracking button — shows after any search with results */}
+              {(results.length > 0 || flightResults.length > 0) && origin && dest && (
+                <button className="btn btn-primary" style={{marginTop:12, background:'#004E89'}} onClick={addCurrentToTracking}>
+                  📌 加入每日追蹤 {origin} → {dest}
+                </button>
+              )}
             </>
           )}
 
@@ -535,6 +599,52 @@ export default function App() {
                   </div>
                 ))
               )}
+            </>
+          )}
+          {tab === 'tracking' && (
+            <>
+              <div className="card">
+                <div style={{fontSize:14, fontWeight:700, marginBottom:12}}>📌 我的追蹤航線</div>
+                <p style={{fontSize:13, color:'#6B7280', marginBottom:14}}>
+                  加入追蹤的航線，系統會每天自動爬取最新票價，讓你搜尋時直接看到真實資料。
+                </p>
+
+                {/* Add new tracking */}
+                <div className="row" style={{marginBottom:12}}>
+                  <input className="input" value={trackOrigin} onChange={e => setTrackOrigin(e.target.value.toUpperCase())} placeholder="出發地 TPE" />
+                  <input className="input" value={trackDest} onChange={e => setTrackDest(e.target.value.toUpperCase())} placeholder="目的地 NRT" />
+                  <button className="btn btn-primary" style={{width:'auto', padding:'10px 16px', flexShrink:0}} onClick={addTracking}>＋</button>
+                </div>
+              </div>
+
+              {trackingList.length === 0 ? (
+                <div className="empty">
+                  <div className="empty-icon">📌</div>
+                  <div className="empty-text">還沒有追蹤的航線</div>
+                  <div className="empty-hint">搜尋機票後點「加入每日追蹤」，或在上方手動新增</div>
+                </div>
+              ) : (
+                trackingList.map(t => (
+                  <div className="history-item" key={t.id}>
+                    <div className="history-content">
+                      <div className="history-route">{t.origin} → {t.destination}</div>
+                      <div className="history-detail">
+                        {t.last_crawled_at
+                          ? `上次爬取：${new Date(t.last_crawled_at).toLocaleString('zh-TW')} · ${t.last_result_count} 筆`
+                          : '尚未爬取'}
+                      </div>
+                    </div>
+                    <span style={{fontSize:12, color: t.enabled ? '#10B981' : '#9CA3AF', fontWeight:600, padding:'0 8px'}}>
+                      {t.enabled ? '啟用' : '暫停'}
+                    </span>
+                    <button className="del-btn" onClick={() => removeTracking(t.id)}>✕</button>
+                  </div>
+                ))
+              )}
+
+              <div style={{marginTop:16, fontSize:12, color:'#9CA3AF'}}>
+                💡 系統預設追蹤熱門航線（TPE↔NRT、TPE↔KIX 等），不需手動新增。
+              </div>
             </>
           )}
         </div>
