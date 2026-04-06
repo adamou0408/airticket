@@ -101,7 +101,36 @@ flight_results (API response, 非 DB)
 └─ stops: [{ city, wait_minutes }]
 ```
 
-不需要新增 DB table — 航班搜尋結果是即時的，不需要持久化。
+需要新增 DB table：
+
+```
+crawl_schedules (使用者自訂的每日爬取排程)
+├─ id
+├─ user_id
+├─ origin: "TPE"
+├─ destination: "NRT"
+├─ enabled: bool
+├─ created_at
+```
+
+## 爬蟲觸發策略
+
+```
+使用者搜尋
+    ↓
+1. 查快取 → 有 → 立即回傳（< 1秒，標示 ✅ 真實）
+    ↓ 沒有
+2. 先回傳模擬資料（標示 ⚠️ 模擬，< 3秒）
+3. 背景非同步觸發爬蟲
+4. 爬蟲完成 → 更新快取
+5. 下次搜尋同條件 → 拿到真實資料
+```
+
+**每日排程爬取**：
+- 系統預設：熱門航線（TPE↔NRT、TPE↔KIX、TPE↔ICN 等）
+- 使用者自訂：可新增/刪除自己關注的航線，每日自動爬取
+- 排程時間：每天凌晨 3:00 執行
+- 結果存入快取，使用者搜尋時直接命中
 
 ## 整合點
 - 擴展現有 `app/tickets/` 模組，新增 `app/flights/` 模組
