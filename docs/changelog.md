@@ -48,3 +48,6 @@
 - **解決** | `conflicts/CONFLICT-004.md` | 方案 1：只用爬蟲，真實資料優先（長榮+星宇）
 - **狀態變更** | `specs/global-flight-search/spec.md` | `in-review` → `approved`（18 項審核全部通過）
 - **新增** | `reviews/REVIEW-global-flight-search-2026-04-06.md` | 審核通過
+- **新增** | `intake/raw/2026-04-06-core-experience-enhancement.md` | 核心體驗補強需求
+- **新增** | `specs/core-experience-enhancement/spec.md` | AI 轉譯完成，狀態：`draft`，5 個 User Stories（US-17~21）
+- **衝突** | `conflicts/CONFLICT-005.md` | 偵測到衝突：移除 mock 後空結果 vs 使用者體驗
