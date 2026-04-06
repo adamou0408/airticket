@@ -160,3 +160,16 @@ class CrawlerRouter:
 
 # Global router instance
 router = CrawlerRouter()
+
+# Register real airline crawlers (they gracefully fail if Playwright not available)
+try:
+    from app.flights.evaair_crawler import EvaAirCrawler
+    router.register(EvaAirCrawler())
+except Exception:
+    pass
+
+try:
+    from app.flights.starlux_crawler import StarluxCrawler
+    router.register(StarluxCrawler())
+except Exception:
+    pass
