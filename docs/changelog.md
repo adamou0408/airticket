@@ -45,3 +45,6 @@
 - **新增** | `intake/raw/2026-04-06-airline-search-and-global-airports.md` | 新需求：單程/來回搜尋 + 全球機場 + 真實資料
 - **新增** | `specs/global-flight-search/spec.md` | AI 轉譯完成，狀態：`draft`，5 個 User Stories（US-12~16）
 - **衝突** | `conflicts/CONFLICT-004.md` | 偵測到衝突：真實資料可靠性 vs 爬蟲穩定性
+- **解決** | `conflicts/CONFLICT-004.md` | 方案 1：只用爬蟲，真實資料優先（長榮+星宇）
+- **狀態變更** | `specs/global-flight-search/spec.md` | `in-review` → `approved`（18 項審核全部通過）
+- **新增** | `reviews/REVIEW-global-flight-search-2026-04-06.md` | 審核通過
