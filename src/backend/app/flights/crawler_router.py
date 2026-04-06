@@ -129,7 +129,7 @@ class CrawlerRouter:
     """Routes search requests to multiple crawlers."""
 
     def __init__(self):
-        self.crawlers: list[FlightCrawler] = [SimulatedFlightCrawler()]
+        self.crawlers: list[FlightCrawler] = []  # No SimulatedCrawler — real data only (US-17)
 
     def register(self, crawler: FlightCrawler):
         self.crawlers.append(crawler)

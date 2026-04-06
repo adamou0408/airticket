@@ -111,12 +111,20 @@ _crawler_instance: AirlineCrawler | None = None
 
 
 def get_crawler() -> AirlineCrawler:
+    """Get the active crawler. No SimulatedCrawler — real data only (US-17)."""
     global _crawler_instance
     if _crawler_instance is None:
-        _crawler_instance = SimulatedCrawler()
+        # Use a NullCrawler that returns None (no mock data)
+        _crawler_instance = NullCrawler()
     return _crawler_instance
 
 
 def set_crawler(crawler: AirlineCrawler) -> None:
     global _crawler_instance
     _crawler_instance = crawler
+
+
+class NullCrawler(AirlineCrawler):
+    """Returns None for all routes — no simulated data. (US-17)"""
+    async def fetch_price(self, origin, destination, travel_date, passengers=1):
+        return None

@@ -92,8 +92,9 @@ async def test_starlux_graceful_fail():
 
 
 @pytest.mark.asyncio
-async def test_router_includes_simulated_and_real():
-    """Router should always have simulated + registered real crawlers."""
+async def test_router_no_simulated():
+    """Router should NOT include simulated crawler (US-17: mock removed)."""
     results, sources = await router.search("TPE", "NRT", date(2026, 7, 1), 1)
-    assert "simulated" in sources
-    assert len(results) > 0
+    assert "simulated" not in sources
+    # Results may be empty if real crawlers can't run (no Playwright)
+    assert isinstance(results, list)

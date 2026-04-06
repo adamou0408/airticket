@@ -100,8 +100,8 @@ async def test_manual_crawl(client):
     data = resp.json()
     assert data["origin"] == "TPE"
     assert data["destination"] == "NRT"
-    assert data["total_flights"] > 0  # At least simulated
-    assert "simulated" in data["sources"]
+    assert isinstance(data["total_flights"], int)  # May be 0 without real crawlers
+    assert "simulated" not in data.get("sources", [])  # US-17: no mock
 
 
 @pytest.mark.asyncio

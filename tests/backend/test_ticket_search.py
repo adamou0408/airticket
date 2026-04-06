@@ -1,119 +1,67 @@
-"""Tests for Task 1.4 + 1.5: Crawler, search service, and API.
+"""Tests for ticket search — after mock removal (US-17).
 
-Covers:
-- SimulatedCrawler returns valid FlightLeg
-- Search service returns outstation combinations
-- Results are sorted by price (default)
-- API endpoint works end-to-end
+With SimulatedCrawler removed, outstation search returns 0 results
+in test environment (no real crawlers). Tests verify:
+- API responds correctly with empty results
+- No simulated source in responses
+- Search structure is correct
 """
 
 from datetime import date
 
 import pytest
-import pytest_asyncio
 
-from app.tickets.crawler import SimulatedCrawler
 from app.tickets.models import SortBy, TicketSearchRequest
 from app.tickets.service import search_outstation_tickets
+from app.tickets.crawler import NullCrawler, get_crawler
+
+
+def test_null_crawler_returns_none():
+    """NullCrawler (default after mock removal) returns None."""
+    import asyncio
+    crawler = NullCrawler()
+    result = asyncio.get_event_loop().run_until_complete(
+        crawler.fetch_price("TPE", "NRT", date(2026, 7, 1))
+    )
+    assert result is None
 
 
 @pytest.mark.asyncio
-async def test_simulated_crawler_returns_flight_leg():
-    crawler = SimulatedCrawler()
-    leg = await crawler.fetch_price("TPE", "NRT", date(2026, 7, 1))
-    assert leg is not None
-    assert leg.origin == "TPE"
-    assert leg.destination == "NRT"
-    assert leg.price > 0
-    assert leg.airline != ""
-
-
-@pytest.mark.asyncio
-async def test_search_returns_results():
+async def test_search_returns_empty_without_real_crawlers():
+    """Without real crawlers, search returns 0 results (not simulated data)."""
     request = TicketSearchRequest(
-        origin="TPE",
-        destination="CDG",
-        departure_date=date(2026, 7, 1),
-        return_date=date(2026, 7, 10),
-        passengers=1,
+        origin="TPE", destination="CDG",
+        departure_date=date(2026, 7, 1), return_date=date(2026, 7, 10),
     )
     response = await search_outstation_tickets(request)
-    assert response.result_count > 0
-    assert len(response.results) == response.result_count
+    assert response.result_count == 0
     assert response.origin == "TPE"
     assert response.destination == "CDG"
 
 
 @pytest.mark.asyncio
-async def test_search_results_sorted_by_price():
-    request = TicketSearchRequest(
-        origin="TPE",
-        destination="CDG",
-        departure_date=date(2026, 7, 1),
-        return_date=date(2026, 7, 10),
-        sort_by=SortBy.price,
-    )
-    response = await search_outstation_tickets(request)
-    prices = [r.total_price for r in response.results]
-    assert prices == sorted(prices)
-
-
-@pytest.mark.asyncio
-async def test_search_each_result_has_4_legs():
-    request = TicketSearchRequest(
-        origin="TPE",
-        destination="CDG",
-        departure_date=date(2026, 7, 1),
-        return_date=date(2026, 7, 10),
-    )
-    response = await search_outstation_tickets(request)
-    for ticket in response.results:
-        assert len(ticket.legs) == 4
-
-
-@pytest.mark.asyncio
-async def test_search_passengers_multiply_price():
-    req1 = TicketSearchRequest(
-        origin="TPE", destination="CDG",
-        departure_date=date(2026, 7, 1), return_date=date(2026, 7, 10),
-        passengers=1,
-    )
-    req2 = TicketSearchRequest(
-        origin="TPE", destination="CDG",
-        departure_date=date(2026, 7, 1), return_date=date(2026, 7, 10),
-        passengers=2,
-    )
-    # Both use simulated data so prices won't be exactly 2x,
-    # but passengers field should be reflected
-    resp = await search_outstation_tickets(req2)
-    assert resp.passengers == 2
-
-
-@pytest.mark.asyncio
-async def test_search_has_direct_price_comparison():
-    request = TicketSearchRequest(
-        origin="TPE",
-        destination="NRT",
-        departure_date=date(2026, 7, 1),
-        return_date=date(2026, 7, 10),
-    )
-    response = await search_outstation_tickets(request)
-    assert response.direct_price is not None
-    assert response.direct_price > 0
-
-
-@pytest.mark.asyncio
-async def test_search_api_endpoint(client):
+async def test_search_api_returns_200_with_empty(client):
+    """API should return 200 with empty results, not crash."""
     response = await client.post("/api/tickets/search", json={
-        "origin": "TPE",
-        "destination": "CDG",
-        "departure_date": "2026-07-01",
-        "return_date": "2026-07-10",
+        "origin": "TPE", "destination": "CDG",
+        "departure_date": "2026-07-01", "return_date": "2026-07-10",
         "passengers": 1,
     })
     assert response.status_code == 200
     data = response.json()
-    assert data["result_count"] > 0
-    assert len(data["results"]) > 0
-    assert data["results"][0]["outstation_city"] != ""
-    assert len(data["results"][0]["legs"]) == 4
+    assert data["result_count"] == 0
+    assert data["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_flights_search_no_simulated(client):
+    """Flight search should not return simulated source."""
+    response = await client.post("/api/flights/search", json={
+        "origin": "TPE", "destination": "NRT",
+        "departure_date": "2026-07-01", "trip_type": "one_way",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    # No simulated flights
+    for f in data.get("outbound_flights", []):
+        assert f["source"] != "simulated"

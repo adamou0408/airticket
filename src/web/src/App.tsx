@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { mockSearch, type OutstationTicket, type SearchResult, type FlightLeg } from './mock'
+// Types (previously from mock.ts — now API-only, US-17)
+interface FlightLeg { origin: string; destination: string; airline: string; flight_number: string; departure_time: string; arrival_time: string; departure_date: string; arrival_date: string; flight_duration_minutes: number; price: number; next_day: boolean }
+interface LayoverInfo { city: string; duration_minutes: number; duration_display: string }
+interface OutstationTicket { outstation_city: string; outstation_city_name: string; legs: FlightLeg[]; layovers: LayoverInfo[]; total_price: number; direct_price: number | null; savings: number | null; savings_percent: number | null; total_transit_time_minutes: number; total_journey_hours: number; outbound_hours: number; return_hours: number; currency: string }
+interface SearchResult { origin: string; destination: string; results: OutstationTicket[]; direct_price: number | null; result_count: number }
 
 const API = import.meta.env.VITE_API_URL || 'https://airticket-api.onrender.com/api'
 
@@ -129,12 +133,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .flight-detail { font-size: 12px; color: #9CA3AF; }
 .source-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
 .source-real { background: #D1FAE5; color: #065F46; }
+.error-card { border-color: #EF4444; background: #FEF2F2; text-align: center; }
 .source-sim { background: #FEF3C7; color: #92400E; }
 .section-title { font-size: 14px; font-weight: 700; color: #004E89; margin: 16px 0 8px; }
 `
 
 // ─── Mock data ──────────────────────────────────────
-// (reuse from mock.ts)
+// Airport search hook
 
 // Airport search hook
 function useAirportSearch() {
@@ -192,6 +197,7 @@ export default function App() {
   const [pax, setPax] = useState('1')
   const [sort, setSort] = useState<'price' | 'transit'>('price')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   // Outstation results
   const [results, setResults] = useState<OutstationTicket[]>([])
   const [directPrice, setDirectPrice] = useState<number | null>(null)
@@ -248,6 +254,7 @@ export default function App() {
     if (searchMode !== 'one_way' && !ret) { alert('請填寫回程日期'); return }
 
     setLoading(true)
+    setError('')
     setResults([]); setFlightResults([]); setReturnFlights([]); setDirectPrice(null)
 
     try {
@@ -262,7 +269,9 @@ export default function App() {
           if (!res.ok) throw new Error()
           data = await res.json()
         } catch {
-          data = mockSearch(origin, dest, dep, ret, +pax || 1, sort)
+          setError('外站票查詢失敗，請稍後再試')
+          setLoading(false)
+          return
         }
         setResults(data.results)
         setDirectPrice(data.direct_price)
@@ -281,27 +290,9 @@ export default function App() {
           const total = (data.outbound_flights?.length || 0) + (data.return_flights?.length || 0)
           _saveHistory(total, data.cheapest_outbound, data.cheapest_roundtrip)
         } catch {
-          // Fallback: generate mock flight data for one-way/round-trip
-          const mockFlights = (orig: string, dst: string, d: string): FlightItem[] => {
-            const airlines = [['長榮航空','BR'],['星宇航空','JX'],['華航','CI'],['國泰航空','CX']]
-            return airlines.map(([name, code], i) => ({
-              airline: name, flight_number: `${code}${100+i*50+Math.floor(Math.random()*50)}`,
-              origin: orig, destination: dst,
-              departure_date: d, departure_time: `${8+i*3}:${['00','15','30','45'][i%4]}`,
-              arrival_date: d, arrival_time: `${11+i*3}:${['30','45','00','15'][i%4]}`,
-              duration_minutes: 150+Math.floor(Math.random()*120),
-              price: (3000+Math.floor(Math.random()*8000))*(+pax||1),
-              source: 'simulated', next_day: false,
-            }))
-          }
-          const outbound = mockFlights(origin, dest, dep).sort((a,b) => a.price - b.price)
-          setFlightResults(outbound)
-          if (searchMode === 'round_trip' && ret) {
-            const retFlights = mockFlights(dest, origin, ret).sort((a,b) => a.price - b.price)
-            setReturnFlights(retFlights)
-          }
-          const bestPrice = outbound.length > 0 ? outbound[0].price : null
-          _saveHistory(outbound.length, bestPrice, null)
+          setError('航班查詢失敗，請稍後再試')
+          setLoading(false)
+          return
         }
       }
     } finally {
@@ -518,6 +509,26 @@ export default function App() {
                   {loading ? '搜尋中...' : searchMode === 'outstation' ? '🔍 搜尋外站票' : searchMode === 'one_way' ? '🔍 搜尋單程機票' : '🔍 搜尋來回機票'}
                 </button>
               </div>
+
+              {/* Error message (US-17) */}
+              {error && (
+                <div className="card" style={{borderColor:'#EF4444', background:'#FEF2F2', textAlign:'center'}}>
+                  <div style={{fontSize:32, marginBottom:8}}>⚠️</div>
+                  <div style={{fontSize:15, fontWeight:700, color:'#DC2626', marginBottom:8}}>{error}</div>
+                  <div style={{fontSize:13, color:'#9CA3AF', marginBottom:12}}>可能原因：航空公司官網暫時無法連線</div>
+                  <button className="btn btn-primary" onClick={search} style={{maxWidth:200, margin:'0 auto'}}>🔄 重試</button>
+                  <div style={{fontSize:12, color:'#9CA3AF', marginTop:8}}>💡 加入「追蹤」，每天自動查詢最新票價</div>
+                </div>
+              )}
+
+              {/* No results (after successful search) */}
+              {!loading && !error && (results.length === 0 && flightResults.length === 0) && (origin && dest && dep) && (
+                <div className="card" style={{textAlign:'center', color:'#9CA3AF'}}>
+                  <div style={{fontSize:32, marginBottom:8}}>✈️</div>
+                  <div style={{fontSize:15, fontWeight:600, marginBottom:4}}>暫無航班資料</div>
+                  <div style={{fontSize:13}}>此航線目前沒有查到票價資料</div>
+                </div>
+              )}
 
               {/* Flight results (one-way / round-trip) */}
               {flightResults.length > 0 && (
