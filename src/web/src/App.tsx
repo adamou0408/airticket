@@ -162,7 +162,11 @@ interface HistoryItem {
   departure: string; return_: string; passengers: number;
   bestPrice: number | null; directPrice: number | null;
   count: number; saved: boolean; time: string;
+  mode?: SearchMode; // 'one_way' | 'round_trip' | 'outstation'
 }
+
+const MODE_LABELS: Record<SearchMode, string> = { one_way: '單程', round_trip: '來回', outstation: '外站票' }
+const MODE_ICONS: Record<SearchMode, string> = { one_way: '→', round_trip: '⇄', outstation: '✈' }
 
 function loadHistory(): HistoryItem[] {
   try { return JSON.parse(localStorage.getItem('search_history') || '[]') } catch { return [] }
@@ -202,6 +206,30 @@ export default function App() {
   const selectOrigin = (a: Airport) => { setOrigin(a.iata); setOriginText(`${a.iata} ${a.city_zh || a.city}`); setShowOriginDrop(false) }
   const selectDest = (a: Airport) => { setDest(a.iata); setDestText(`${a.iata} ${a.city_zh || a.city}`); setShowDestDrop(false) }
 
+  // Auto-resolve typed text to IATA code when input loses focus
+  const resolveOrigin = () => {
+    setTimeout(() => {
+      setShowOriginDrop(false)
+      if (!originText) { setOrigin(''); return }
+      // If already a valid IATA (3 uppercase letters), use it
+      const upper = originText.trim().toUpperCase()
+      if (/^[A-Z]{3}$/.test(upper)) { setOrigin(upper); return }
+      // Try to find a match from the first search result
+      const matches = searchAirport(originText)
+      if (matches.length > 0) { selectOrigin(matches[0]) }
+    }, 200)
+  }
+  const resolveDest = () => {
+    setTimeout(() => {
+      setShowDestDrop(false)
+      if (!destText) { setDest(''); return }
+      const upper = destText.trim().toUpperCase()
+      if (/^[A-Z]{3}$/.test(upper)) { setDest(upper); return }
+      const matches = searchAirport(destText)
+      if (matches.length > 0) { selectDest(matches[0]) }
+    }, 200)
+  }
+
   const swap = () => {
     const tmpCode = origin; const tmpText = originText
     setOrigin(dest); setOriginText(destText)
@@ -209,7 +237,14 @@ export default function App() {
   }
 
   const search = async () => {
-    if (!origin || !dest || !dep) { alert('請填寫出發地、目的地和日期'); return }
+    if (!origin || !dest || !dep) {
+      const missing = []
+      if (!origin) missing.push('出發地')
+      if (!dest) missing.push('目的地')
+      if (!dep) missing.push('日期')
+      alert(`請填寫：${missing.join('、')}\n\n💡 提示：在機場欄位輸入城市名（如「東京」）或機場代碼（如「NRT」），然後從下拉選單選擇`)
+      return
+    }
     if (searchMode !== 'one_way' && !ret) { alert('請填寫回程日期'); return }
 
     setLoading(true)
@@ -263,6 +298,7 @@ export default function App() {
       departure: dep, return_: ret, passengers: +pax || 1,
       bestPrice, directPrice, count, saved: false,
       time: new Date().toLocaleString('zh-TW'),
+      mode: searchMode,
     }
     const updated = [item, ...history].slice(0, 50)
     setHistory(updated); saveHistory(updated)
@@ -396,10 +432,10 @@ export default function App() {
                 <div className="row" style={{ alignItems: 'flex-end' }}>
                   <div className="form-group airport-wrap">
                     <label>出發地</label>
-                    <input className="input" value={originText} placeholder="搜尋機場..."
-                      onChange={e => { setOriginText(e.target.value); setShowOriginDrop(true) }}
+                    <input className="input" value={originText} placeholder="搜尋機場（輸入城市或代碼）"
+                      onChange={e => { setOriginText(e.target.value); setOrigin(''); setShowOriginDrop(true) }}
                       onFocus={() => setShowOriginDrop(true)}
-                      onBlur={() => setTimeout(() => setShowOriginDrop(false), 200)} />
+                      onBlur={resolveOrigin} />
                     {showOriginDrop && (
                       <div className="airport-dropdown">
                         {searchAirport(originText).map(a => (
@@ -415,10 +451,10 @@ export default function App() {
                   <button className="swap-btn" onClick={swap}>⇄</button>
                   <div className="form-group airport-wrap">
                     <label>目的地</label>
-                    <input className="input" value={destText} placeholder="搜尋機場..."
-                      onChange={e => { setDestText(e.target.value); setShowDestDrop(true) }}
+                    <input className="input" value={destText} placeholder="搜尋機場（輸入城市或代碼）"
+                      onChange={e => { setDestText(e.target.value); setDest(''); setShowDestDrop(true) }}
                       onFocus={() => setShowDestDrop(true)}
-                      onBlur={() => setTimeout(() => setShowDestDrop(false), 200)} />
+                      onBlur={resolveDest} />
                     {showDestDrop && (
                       <div className="airport-dropdown">
                         {searchAirport(destText).map(a => (
@@ -589,9 +625,12 @@ export default function App() {
               ) : (
                 history.map(h => (
                   <div className="history-item" key={h.id}>
-                    <div className="history-content" onClick={() => reSearch(h)}>
-                      <div className="history-route">{h.origin} → {h.destination}</div>
-                      <div className="history-detail">{h.departure} ~ {h.return_} · {h.passengers}人 · {h.count}組合</div>
+                    <div className="history-content" onClick={() => { if (h.mode) setSearchMode(h.mode); reSearch(h) }}>
+                      <div className="history-route">
+                        {h.mode && <span style={{fontSize:11, background: h.mode === 'outstation' ? '#FFE8DD' : h.mode === 'one_way' ? '#E3F0FF' : '#D1FAE5', color: h.mode === 'outstation' ? '#D4562A' : h.mode === 'one_way' ? '#004E89' : '#065F46', padding:'2px 6px', borderRadius:4, marginRight:6, fontWeight:600}}>{MODE_LABELS[h.mode]}</span>}
+                        {h.origin} {MODE_ICONS[h.mode || 'round_trip']} {h.destination}
+                      </div>
+                      <div className="history-detail">{h.departure}{h.return_ ? ` ~ ${h.return_}` : ''} · {h.passengers}人 · {h.count}{h.mode === 'outstation' ? '組合' : '航班'}</div>
                       {h.bestPrice && <div className="history-price">最低 ${h.bestPrice.toLocaleString()}</div>}
                     </div>
                     <button className="star-btn" onClick={() => toggleStar(h.id)}>{h.saved ? '⭐' : '☆'}</button>
