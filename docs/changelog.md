@@ -40,3 +40,8 @@
 - **實作** | Phase 4 | 記帳 + 拆帳結算引擎（10 tests）
 - **實作** | Phase 5 | 行程匯出 + 分享連結 + 結算分享（8 tests）
 - **狀態變更** | `specs/travel-planner-app/spec.md` | `in-progress` → `done`（全部後端實作完成，61 tests 通過）
+
+### 2026-04-06
+- **新增** | `intake/raw/2026-04-06-airline-search-and-global-airports.md` | 新需求：單程/來回搜尋 + 全球機場 + 真實資料
+- **新增** | `specs/global-flight-search/spec.md` | AI 轉譯完成，狀態：`draft`，5 個 User Stories（US-12~16）
+- **衝突** | `conflicts/CONFLICT-004.md` | 偵測到衝突：真實資料可靠性 vs 爬蟲穩定性
