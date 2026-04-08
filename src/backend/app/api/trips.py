@@ -1,10 +1,11 @@
 """Trip API endpoints — database-backed."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user_id, get_optional_user_id
-from app.core.database import get_db
+from app.auth.service import decode_access_token
+from app.core.database import get_db, async_session
 from app.trips import comments as comments_mod
 from app.trips.comments import CommentCreate
 from app.trips.models import (
@@ -12,6 +13,7 @@ from app.trips.models import (
     ReorderRequest, SetRoleRequest,
 )
 from app.trips import service as trip_svc
+from app.trips import websocket as ws_svc
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -121,7 +123,9 @@ async def create_item(trip_id: int, req: CreateItemRequest, user_id: int = Depen
     if not trip_svc.can_edit(trip, user_id):
         raise HTTPException(status_code=403, detail="你沒有編輯權限")
     item = await trip_svc.add_item(db, trip_id, req.day_number, req.type, req.name, req.time, req.location, req.note, req.estimated_cost, user_id)
-    return _item_to_dict(item)
+    item_dict = _item_to_dict(item)
+    await ws_svc.notify_item_added(trip_id, item_dict, user_id)
+    return item_dict
 
 
 @router.put("/{trip_id}/items/{item_id}")
@@ -132,7 +136,9 @@ async def modify_item(trip_id: int, item_id: int, req: CreateItemRequest, user_i
     item = await trip_svc.update_item(db, item_id, day_number=req.day_number, type=req.type, name=req.name, time=req.time, location=req.location, note=req.note, estimated_cost=req.estimated_cost)
     if not item:
         raise HTTPException(status_code=404)
-    return _item_to_dict(item)
+    item_dict = _item_to_dict(item)
+    await ws_svc.notify_item_updated(trip_id, item_dict, user_id)
+    return item_dict
 
 
 @router.delete("/{trip_id}/items/{item_id}", status_code=204)
@@ -141,6 +147,7 @@ async def remove_item(trip_id: int, item_id: int, user_id: int = Depends(get_cur
     if not trip_svc.can_edit(trip, user_id):
         raise HTTPException(status_code=403, detail="你沒有編輯權限")
     await trip_svc.delete_item(db, item_id)
+    await ws_svc.notify_item_deleted(trip_id, item_id, user_id)
 
 
 @router.put("/{trip_id}/items/reorder")
@@ -192,6 +199,8 @@ async def create_comment(trip_id: int, item_id: int, req: CommentCreate, user_id
         raise HTTPException(status_code=403)
     comment = comments_mod.add_comment(item_id, user_id, req.text)
     comments_mod.record_edit(trip_id, user_id, "add_comment", f"留言於項目 {item_id}", item_id)
+    # Broadcast to other editors (Task 3.1)
+    await ws_svc.notify_comment_added(trip_id, item_id, comment.model_dump() if hasattr(comment, 'model_dump') else dict(comment.__dict__))
     return comment
 
 
@@ -237,6 +246,7 @@ async def confirm_trip(trip_id: int, user_id: int = Depends(get_current_user_id)
     new_status = await trip_svc.confirm_member(db, trip_id, user_id)
     if new_status == "finalized":
         comments_mod.record_edit(trip_id, user_id, "finalize", "全員確認，行程已定案")
+        await ws_svc.notify_trip_finalized(trip_id, user_id)
     return {"message": "已確認", "status": new_status}
 
 
@@ -248,3 +258,57 @@ async def unlock_trip(trip_id: int, user_id: int = Depends(get_current_user_id),
     await trip_svc.unlock_trip(db, trip_id)
     comments_mod.record_edit(trip_id, user_id, "unlock", "解鎖行程")
     return {"message": "行程已解鎖", "status": "planning"}
+
+
+# ─── WebSocket: Real-time collaboration (Task 3.1) ─────
+
+@router.websocket("/{trip_id}/ws")
+async def trip_websocket(websocket: WebSocket, trip_id: int, token: str = ""):
+    """WebSocket endpoint for real-time trip editing.
+
+    Usage:
+        ws://host/api/trips/{trip_id}/ws?token={jwt_token}
+
+    Broadcasts item_added/updated/deleted, comment_added, trip_finalized
+    events to all members currently viewing the trip.
+
+    Spec: .req/specs/travel-planner-app/spec.md — US-7
+    Task: .req/specs/travel-planner-app/tasks.md — Task 3.1
+    """
+    # Authenticate via query parameter
+    user_id = decode_access_token(token) if token else None
+    if user_id is None:
+        await websocket.close(code=4401)  # Custom code: unauthorized
+        return
+
+    # Verify membership
+    async with async_session() as db:
+        trip = await trip_svc.get_trip(db, trip_id)
+        if not trip or not trip_svc.is_member(trip, user_id):
+            await websocket.close(code=4403)  # Custom code: forbidden
+            return
+
+    await ws_svc.manager.connect(trip_id, websocket)
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "trip_id": trip_id,
+            "user_id": user_id,
+            "peers": ws_svc.manager.get_connection_count(trip_id),
+        })
+
+        # Keep connection alive — relay ping/pong or client messages
+        while True:
+            data = await websocket.receive_json()
+            # Echo back any client-sent events (e.g. cursor position, typing indicator)
+            if data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+            elif data.get("type") in ("cursor", "typing"):
+                # Broadcast presence indicators to other clients
+                data["user_id"] = user_id
+                await ws_svc.manager.broadcast(trip_id, data, exclude=websocket)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await ws_svc.manager.disconnect(trip_id, websocket)

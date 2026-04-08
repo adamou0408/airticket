@@ -1,10 +1,13 @@
 /**
- * Trips Tab — trip planning frontend.
- * Spec: US-18 — 行程規劃前端頁面
+ * Trips Tab — trip planning frontend with real-time collaboration.
+ *
+ * Spec: .req/specs/travel-planner-app/spec.md — US-18, US-7
+ * Task: .req/specs/travel-planner-app/tasks.md — Task 3.1 (WebSocket 即時同步)
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const API = import.meta.env.VITE_API_URL || 'https://airticket-api.onrender.com/api'
+const WS_URL = API.replace(/^http/, 'ws')
 
 interface Trip { id: number; name: string; destination: string; start_date: string; end_date: string; budget: number | null; currency: string; status: string; owner_id: number; member_count: number; share_token: string }
 interface TripDetail extends Trip { members: { user_id: number; role: string; confirmed: boolean }[]; items: Item[] }
@@ -26,10 +29,78 @@ export default function TripsTab({ token }: { token: string | null }) {
   const [newItemType, setNewItemType] = useState('other')
   const [newItemCost, setNewItemCost] = useState('')
   const [copied, setCopied] = useState(false)
+  const [peers, setPeers] = useState(0)
+  const [liveActivity, setLiveActivity] = useState('')
+  const wsRef = useRef<WebSocket | null>(null)
 
   const headers = token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
 
   useEffect(() => { if (token) loadTrips() }, [token])
+
+  // WebSocket connection for real-time collaboration (Task 3.1)
+  useEffect(() => {
+    if (!selectedTrip || !token) {
+      wsRef.current?.close()
+      wsRef.current = null
+      setPeers(0)
+      return
+    }
+
+    const ws = new WebSocket(`${WS_URL}/trips/${selectedTrip.id}/ws?token=${token}`)
+    wsRef.current = ws
+
+    ws.onopen = () => console.log(`[ws] connected to trip ${selectedTrip.id}`)
+    ws.onerror = (e) => console.warn('[ws] error', e)
+    ws.onclose = () => { wsRef.current = null; setPeers(0) }
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        switch (msg.type) {
+          case 'connected':
+            setPeers(msg.peers || 1)
+            break
+          case 'presence':
+            setPeers(msg.count || 0)
+            if (msg.action === 'join') setLiveActivity('👋 有人加入編輯')
+            if (msg.action === 'leave') setLiveActivity('👋 有人離開')
+            break
+          case 'item_added':
+            setLiveActivity(`➕ 新增：${msg.item?.name || '項目'}`)
+            loadTrip(selectedTrip.id)
+            break
+          case 'item_updated':
+            setLiveActivity(`✏️ 更新：${msg.item?.name || '項目'}`)
+            loadTrip(selectedTrip.id)
+            break
+          case 'item_deleted':
+            setLiveActivity(`🗑️ 刪除項目`)
+            loadTrip(selectedTrip.id)
+            break
+          case 'comment_added':
+            setLiveActivity(`💬 新留言`)
+            break
+          case 'trip_finalized':
+            setLiveActivity(`📋 行程已定案`)
+            loadTrip(selectedTrip.id)
+            break
+        }
+        if (msg.type !== 'pong' && msg.type !== 'connected') {
+          setTimeout(() => setLiveActivity(''), 3000)
+        }
+      } catch {}
+    }
+
+    // Ping every 30s to keep connection alive
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
+    }, 30000)
+
+    return () => {
+      clearInterval(pingInterval)
+      ws.close()
+    }
+  }, [selectedTrip?.id, token])
 
   const loadTrips = async () => {
     try {
@@ -102,7 +173,22 @@ export default function TripsTab({ token }: { token: string | null }) {
 
     return (
       <>
-        <button style={{background:'none',border:'none',fontSize:14,color:'#FF6B35',fontWeight:600,marginBottom:12,cursor:'pointer'}} onClick={() => setSelectedTrip(null)}>← 返回列表</button>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <button style={{background:'none',border:'none',fontSize:14,color:'#FF6B35',fontWeight:600,cursor:'pointer'}} onClick={() => setSelectedTrip(null)}>← 返回列表</button>
+          {peers > 0 && (
+            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#10B981',fontWeight:600}}>
+              <span style={{width:8,height:8,borderRadius:4,background:'#10B981',display:'inline-block',boxShadow:'0 0 0 4px rgba(16,185,129,0.2)'}} />
+              {peers} 人在線
+            </div>
+          )}
+        </div>
+
+        {/* Live activity banner */}
+        {liveActivity && (
+          <div style={{background:'#FEF3C7',color:'#92400E',padding:'8px 12px',borderRadius:8,marginBottom:8,fontSize:13,fontWeight:600,textAlign:'center'}}>
+            {liveActivity}
+          </div>
+        )}
 
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>

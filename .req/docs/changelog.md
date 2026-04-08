@@ -60,3 +60,7 @@
 - **更新** | `.claude/commands/` | 指令加上 `req-` 前綴（`/intake` → `/req-intake`）
 - **新增** | `.claude/agents/req-*` | 3 個 subagent（conflict-detector, onboarder, research）
 - **更新** | 所有業務資料的路徑引用 | `specs/` → `.req/specs/` 等
+- **實作** | 任務 3.1 WebSocket 即時同步 | US-7 共同編輯行程完成
+  - 後端：`ConnectionManager` + 5 種廣播事件（item add/update/delete、comment、finalize）
+  - 前端：TripsTab 自動連線、presence 顯示、活動提示橫幅
+  - 8 個測試通過，總測試數 84 → 92
