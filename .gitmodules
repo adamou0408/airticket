@@ -1,0 +1,3 @@
+[submodule ".req-framework"]
+	path = .req-framework
+	url = https://github.com/adamou0408/req.git
