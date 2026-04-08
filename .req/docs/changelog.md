@@ -64,3 +64,9 @@
   - 後端：`ConnectionManager` + 5 種廣播事件（item add/update/delete、comment、finalize）
   - 前端：TripsTab 自動連線、presence 顯示、活動提示橫幅
   - 8 個測試通過，總測試數 84 → 92
+- **實作** | 任務 5.1/5.2/5.3 前端分享匯出 | US-8、US-11 完成
+  - TripsTab 加入「📤 分享行程」區塊：複製文字、系統分享、列印/PDF、唯讀連結
+  - SharedTripView.tsx：處理 `?share=token` URL，無需登入的唯讀檢視
+  - ExpensesTab 拆帳結算：複製 + Web Share API 分享（LINE/WhatsApp）
+  - 列印 CSS（@media print）：乾淨的 PDF 輸出
+  - travel-planner-app spec 全部 22 個任務完成 ✅

@@ -55,11 +55,43 @@ export default function ExpensesTab({ token, tripId }: { token: string | null; t
     loadSettlement()
   }
 
-  const copySettlement = () => {
-    const text = settlement.map(e =>
-      `${e.settled ? '✅' : '⏳'} 用戶${e.from_user} → 用戶${e.to_user}：${budget?.currency || 'TWD'} ${e.amount.toLocaleString()}`
-    ).join('\n')
-    navigator.clipboard.writeText(`💰 拆帳結算\n${text}`)
+  const [copyMsg, setCopyMsg] = useState('')
+
+  const formatSettlementText = (): string => {
+    const currency = budget?.currency || 'TWD'
+    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+    const lines: string[] = []
+    const tripName = trips.find(t => t.id === selectedTripId)?.name || ''
+    lines.push(`💰 拆帳結算${tripName ? ` — ${tripName}` : ''}`)
+    lines.push(`總花費：${currency} ${totalExpenses.toLocaleString()}`)
+    lines.push(`筆數：${expenses.length} 筆`)
+    lines.push('')
+    if (settlement.length === 0) {
+      lines.push('✅ 大家都結清了，不需要轉帳！')
+    } else {
+      lines.push('📋 轉帳清單：')
+      settlement.forEach(e => {
+        lines.push(`${e.settled ? '✅' : '⏳'} 用戶${e.from_user} → 用戶${e.to_user}：${currency} ${e.amount.toLocaleString()}`)
+      })
+    }
+    lines.push('')
+    lines.push('── by AirTicket 旅遊規劃 ──')
+    return lines.join('\n')
+  }
+
+  const copySettlement = async () => {
+    await navigator.clipboard.writeText(formatSettlementText())
+    setCopyMsg('✅ 已複製到剪貼簿')
+    setTimeout(() => setCopyMsg(''), 2500)
+  }
+
+  const shareSettlement = async () => {
+    const text = formatSettlementText()
+    if (navigator.share) {
+      try { await navigator.share({ title: '拆帳結算', text }) } catch {}
+    } else {
+      await copySettlement()
+    }
   }
 
   if (!token) return (
@@ -181,8 +213,12 @@ export default function ExpensesTab({ token, tripId }: { token: string | null; t
                 )}
               </div>
               {settlement.length > 0 && (
-                <button className="btn" style={{border:'1.5px solid #FF6B35',color:'#FF6B35',marginTop:8}} onClick={copySettlement}>📋 複製結算結果</button>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:8}}>
+                  <button className="btn" style={{border:'1.5px solid #FF6B35',color:'#FF6B35',padding:10,fontSize:13}} onClick={copySettlement}>📋 複製</button>
+                  <button className="btn" style={{border:'1.5px solid #004E89',color:'#004E89',padding:10,fontSize:13}} onClick={shareSettlement}>📱 分享</button>
+                </div>
               )}
+              {copyMsg && <div style={{marginTop:8,fontSize:13,color:'#10B981',fontWeight:600,textAlign:'center'}}>{copyMsg}</div>}
             </>
           )}
         </>

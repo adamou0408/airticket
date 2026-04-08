@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import TripsTab from './TripsTab'
 import ExpensesTab from './ExpensesTab'
+import SharedTripView from './SharedTripView'
 
 // Types (API-only, US-17)
 interface FlightLeg { origin: string; destination: string; airline: string; flight_number: string; departure_time: string; arrival_time: string; departure_date: string; arrival_date: string; flight_duration_minutes: number; price: number; next_day: boolean }
@@ -139,6 +140,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .error-card { border-color: #EF4444; background: #FEF2F2; text-align: center; }
 .source-sim { background: #FEF3C7; color: #92400E; }
 .section-title { font-size: 14px; font-weight: 700; color: #004E89; margin: 16px 0 8px; }
+@media print {
+  .tabs, .no-print, .mode-tabs, header, .header { display: none !important; }
+  .app { max-width: 100% !important; }
+  body { background: white !important; }
+  .card, .flight-card { box-shadow: none !important; border: 1px solid #ddd !important; page-break-inside: avoid; }
+  .del-btn, button.btn, select { display: none !important; }
+}
 `
 
 // ─── Mock data ──────────────────────────────────────
@@ -186,7 +194,26 @@ type Tab = 'search' | 'history' | 'tracking' | 'trips' | 'expenses'
 
 interface TrackingItem { id: number; origin: string; destination: string; enabled: boolean; last_crawled_at: string | null; last_result_count: number }
 
+// Check URL param BEFORE App component mounts (avoid hook rules violation)
+const SHARE_TOKEN = new URLSearchParams(window.location.search).get('share')
+
 export default function App() {
+  // Early return for shared read-only view — no hooks needed before this
+  if (SHARE_TOKEN) {
+    return (
+      <>
+        <style>{CSS}</style>
+        <div className="app">
+          <div className="header">
+            <h1>✈️ AirTicket 旅遊規劃</h1>
+            <p>共享行程檢視</p>
+          </div>
+          <SharedTripView token={SHARE_TOKEN} />
+        </div>
+      </>
+    )
+  }
+
   const [tab, setTab] = useState<Tab>('search')
   const [searchMode, setSearchMode] = useState<SearchMode>('round_trip')
   const [origin, setOrigin] = useState('TPE')

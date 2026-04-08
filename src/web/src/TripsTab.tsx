@@ -153,9 +153,72 @@ export default function TripsTab({ token }: { token: string | null }) {
 
   const copyInvite = () => {
     if (!selectedTrip) return
-    navigator.clipboard.writeText(`${window.location.origin}/api/trips/join/${selectedTrip.share_token}`)
+    // Share the read-only URL (public view) instead of API endpoint
+    const url = `${window.location.origin}${window.location.pathname}?share=${selectedTrip.share_token}`
+    navigator.clipboard.writeText(url)
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
+
+  // Export trip as formatted text (for copy/share to LINE, etc.)
+  const exportAsText = (trip: TripDetail): string => {
+    const lines: string[] = []
+    lines.push(`✈️ ${trip.name}`)
+    lines.push(`📍 ${trip.destination}`)
+    lines.push(`📅 ${trip.start_date} ~ ${trip.end_date}`)
+    if (trip.budget) lines.push(`💰 預算 ${trip.currency} ${trip.budget.toLocaleString()}`)
+    lines.push(`👥 ${trip.members.length} 人`)
+    lines.push('')
+
+    // Group items by day
+    const days: Record<number, Item[]> = {}
+    trip.items.forEach(i => { (days[i.day_number] ||= []).push(i) })
+
+    Object.keys(days).sort((a, b) => +a - +b).forEach(day => {
+      lines.push(`─── Day ${day} ───`)
+      days[+day].sort((a, b) => a.order - b.order).forEach(item => {
+        const icon = TYPE_ICONS[item.type] || '📌'
+        const time = item.time ? `${item.time} ` : ''
+        const cost = item.estimated_cost ? ` ($${item.estimated_cost.toLocaleString()})` : ''
+        lines.push(`${icon} ${time}${item.name}${cost}`)
+        if (item.location) lines.push(`   📍 ${item.location}`)
+        if (item.note) lines.push(`   📝 ${item.note}`)
+      })
+      lines.push('')
+    })
+
+    lines.push(`── by AirTicket 旅遊規劃 ──`)
+    return lines.join('\n')
+  }
+
+  const [shareMsg, setShareMsg] = useState('')
+
+  const copyTripText = async () => {
+    if (!selectedTrip) return
+    const text = exportAsText(selectedTrip)
+    await navigator.clipboard.writeText(text)
+    setShareMsg('✅ 已複製行程到剪貼簿')
+    setTimeout(() => setShareMsg(''), 2500)
+  }
+
+  // Use native Web Share API if available (mobile)
+  const shareViaSystem = async () => {
+    if (!selectedTrip) return
+    const text = exportAsText(selectedTrip)
+    const url = `${window.location.origin}${window.location.pathname}?share=${selectedTrip.share_token}`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: selectedTrip.name, text, url })
+      } catch (e) { /* user cancelled */ }
+    } else {
+      // Fallback: copy to clipboard
+      await navigator.clipboard.writeText(`${text}\n\n🔗 查看完整行程：${url}`)
+      setShareMsg('✅ 已複製（含連結）')
+      setTimeout(() => setShareMsg(''), 2500)
+    }
+  }
+
+  // Print to PDF using browser's built-in print dialog
+  const printToPdf = () => { window.print() }
 
   if (!token) return (
     <div className="empty">
@@ -213,6 +276,18 @@ export default function TripsTab({ token }: { token: string | null }) {
             </div>
           ))}
           <button className="btn btn-primary" style={{marginTop:8,fontSize:13,padding:10}} onClick={copyInvite}>{copied ? '✅ 已複製！' : '🔗 複製邀請連結'}</button>
+        </div>
+
+        {/* Share & Export (Task 5.x) */}
+        <div className="card no-print">
+          <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>📤 分享行程</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <button className="btn" style={{border:'1.5px solid #FF6B35',color:'#FF6B35',padding:10,fontSize:13}} onClick={copyTripText}>📋 複製文字</button>
+            <button className="btn" style={{border:'1.5px solid #004E89',color:'#004E89',padding:10,fontSize:13}} onClick={shareViaSystem}>📱 分享到 App</button>
+            <button className="btn" style={{border:'1.5px solid #10B981',color:'#10B981',padding:10,fontSize:13}} onClick={printToPdf}>🖨️ 列印/存 PDF</button>
+            <button className="btn" style={{border:'1.5px solid #9CA3AF',color:'#6B7280',padding:10,fontSize:13}} onClick={copyInvite}>🔗 唯讀連結</button>
+          </div>
+          {shareMsg && <div style={{marginTop:8,fontSize:13,color:'#10B981',fontWeight:600,textAlign:'center'}}>{shareMsg}</div>}
         </div>
 
         {/* Itinerary */}

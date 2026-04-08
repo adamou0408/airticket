@@ -233,45 +233,41 @@
 - **驗收條件**：
   - [x] GET `/api/trips/{id}/export/text` 文字版匯出
   - [x] GET `/api/trips/{id}/export/json` JSON 匯出
-  - [ ] 前端圖片/PDF 匯出（待做）
-- **狀態**：`done`（後端完成）
+  - [x] 前端 PDF 匯出（window.print + 列印 CSS）
+  - [x] 前端文字複製（含表情符號 + 完整行程）
+- **狀態**：`done`
 
 ### 任務 5.2：唯讀分享連結
 - **對應 User Story**：US-8
 - **驗收條件**：
   - [x] GET `/api/share/{token}` 無需登入即可查看
-  - [ ] Web 版唯讀行程頁面（待做）
-- **狀態**：`done`（後端完成）
+  - [x] Web 版唯讀行程頁面（SharedTripView.tsx，URL ?share=token）
+  - [x] 處理無效連結錯誤訊息
+  - [x] 支援列印/存 PDF
+- **狀態**：`done`
 
 ### 任務 5.3：結算結果分享
 - **對應 User Story**：US-11
 - **驗收條件**：
   - [x] GET `/api/trips/{id}/settlement/export/text` 文字版結算
-  - [ ] 前端分享到 LINE/WhatsApp（待做）
-- **狀態**：`done`（後端完成）
+  - [x] 前端複製結算結果（含總花費、筆數、轉帳清單）
+  - [x] 前端 Web Share API 分享（支援 LINE/WhatsApp 等原生分享）
+- **狀態**：`done`
 
 ---
 
 ## 進度摘要
 - 總任務數：22
-- 已完成：21
-- 部分完成（前端未做）：1（任務 5.x 分享/匯出前端）
+- 已完成：22 ✅
 - 待做：0
 
-## 待做項目總覽
+## 待做項目總覽（來自其他 spec 和新需求）
 
-### 後端待做
-- [ ] 任務 1.4：真實航空公司爬蟲（已實作，需 Playwright 環境才能驗證）
-- [ ] 任務 3.1：WebSocket 即時同步
-- [ ] 後端接 PostgreSQL 持久化（目前 in-memory）
+### 需要硬體/環境支援
+- [ ] 真實航空公司爬蟲驗證（需 Playwright 環境，已實作）
+- [ ] Coolify 部署到 CM5（需硬體就緒）
+- [ ] Twilio SMS 串接（需 Twilio 帳號）
 
-### 前端待做
-- [ ] 任務 2.6：行程規劃頁面（接 API）
-- [ ] 任務 4.5：記帳拆帳頁面（接 API）
-- [ ] 任務 5.x：分享/匯出前端功能
+### React Native 版（Web 版已完成）
 - [ ] Token 持久化（SecureStore）
-
-### 部署待做
-- [ ] 後端部署到雲端（AWS/Railway/Fly.io）
-- [ ] 前端連接真實後端 API
-- [ ] Twilio SMS 串接
+- [ ] RN 版行程/記帳頁面對應 Web 版
